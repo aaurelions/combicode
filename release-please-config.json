@@ -12,7 +12,8 @@
           "path": "combicode-js/package-lock.json",
           "jsonpath": "$.version"
         }
-      ]
+      ],
+      "tag-name": "v${version}"
     }
   }
 }
