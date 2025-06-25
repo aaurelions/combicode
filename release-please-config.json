@@ -10,14 +10,17 @@
         "regex": "__version__ = \"(?<version>.*)\""
       },
       "extra-files": [
-        "combicode-js/package.json",
+        {
+          "type": "json",
+          "path": "combicode-js/package.json",
+          "jsonpath": "$.version"
+        },
         {
           "type": "json",
           "path": "combicode-js/package-lock.json",
           "jsonpath": "$.version"
         }
-      ],
-      "tag-name": "v${version}"
+      ]
     }
   }
 }
