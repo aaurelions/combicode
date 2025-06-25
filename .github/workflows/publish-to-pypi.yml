@@ -20,6 +20,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Sync shared assets into package
+        run: |
+          chmod +x ./scripts/sync-assets.sh
+          ./scripts/sync-assets.sh
+        working-directory: . # Run from root
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:

@@ -1,23 +1,30 @@
 import os
 import sys
+import json
 from pathlib import Path
 import click
 import pathspec
 from importlib import metadata
 
-DEFAULT_IGNORE_PATTERNS = [
-    ".git/", ".vscode/", ".idea/", "*.log", ".env", "*.lock",
-    ".venv/", "venv/", "env/", "__pycache__/", "*.pyc", "*.egg-info/", "build/", "dist/", ".pytest_cache/",
-    "node_modules/", ".npm/", "pnpm-lock.yaml", "package-lock.json", ".next/",
-    ".DS_Store", "Thumbs.db",
-    "*.png", "*.jpg", "*.jpeg", "*.gif", "*.ico", "*.svg", "*.webp",
-    "*.mp3", "*.wav", "*.flac",
-    "*.mp4", "*.mov", "*.avi",
-    "*.zip", "*.tar.gz", "*.rar",
-    "*.pdf", "*.doc", "*.docx", "*.xls", "*.xlsx",
-    "*.dll", "*.exe", "*.so", "*.a", "*.lib", "*.o",
-    "*.bin", "*.iso",
-]
+SYSTEM_PROMPT = """You are an expert software architect. The user is providing you with the complete source code for a project, contained in a single file. Your task is to meticulously analyze the provided codebase to gain a comprehensive understanding of its structure, functionality, dependencies, and overall architecture.
+
+A file tree is provided below to give you a high-level overview. The subsequent sections contain the full content of each file, clearly marked with "// FILE: <path>".
+
+Your instructions are:
+1.  **Analyze Thoroughly:** Read through every file to understand its purpose and how it interacts with other files.
+2.  **Identify Key Components:** Pay close attention to configuration files (like package.json, pyproject.toml), entry points (like index.js, main.py), and core logic.
+"""
+
+def load_default_ignore_patterns():
+    try:
+        config_path = Path(__file__).resolve().parent / 'config' / 'ignore.json'
+        with config_path.open('r', encoding='utf-8') as f:
+            return json.load(f)
+    except (IOError, json.JSONDecodeError) as e:
+        click.echo(f"❌ Critical: Could not read or parse bundled ignore config: {e}", err=True)
+        sys.exit(1)
+
+DEFAULT_IGNORE_PATTERNS = load_default_ignore_patterns()
 
 def is_likely_binary(path: Path) -> bool:
     try:
@@ -26,14 +33,38 @@ def is_likely_binary(path: Path) -> bool:
     except IOError:
         return True
 
+def generate_file_tree(relative_paths: list[Path], root: Path) -> str:
+    tree_lines = [f"{root.name}/"]
+    structure = {}
+    for path in sorted(relative_paths):
+        parts = path.parts
+        current_level = structure
+        for part in parts:
+            current_level = current_level.setdefault(part, {})
+
+    def build_tree(level, prefix=""):
+        entries = sorted(level.keys())
+        for i, entry in enumerate(entries):
+            is_last = i == len(entries) - 1
+            connector = "└── " if is_last else "├── "
+            tree_lines.append(f"{prefix}{connector}{entry}")
+            if level[entry]:
+                new_prefix = prefix + ("    " if is_last else "│   ")
+                build_tree(level[entry], new_prefix)
+
+    build_tree(structure)
+    return "\n".join(tree_lines)
+
+
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
 @click.option("-o", "--output", default="combicode.txt", help="The name of the output file.", show_default=True)
 @click.option("-d", "--dry-run", is_flag=True, help="Preview files without creating the output file.")
 @click.option("-i", "--include-ext", help="Comma-separated list of extensions to exclusively include (e.g., .py,.js).")
 @click.option("-e", "--exclude", help="Comma-separated list of additional glob patterns to exclude.")
 @click.option("--no-gitignore", is_flag=True, help="Do not use patterns from the project's .gitignore file.")
-@click.version_option(version=metadata.version("combicode"), prog_name="Combicode")
-def cli(output, dry_run, include_ext, exclude, no_gitignore):
+@click.option("--no-header", is_flag=True, help="Omit the introductory prompt and file tree from the output.")
+@click.version_option(metadata.version("combicode"), '-v', '--version', prog_name="Combicode", message="%(prog)s (Python), version %(version)s")
+def cli(output, dry_run, include_ext, exclude, no_gitignore, no_header):
     """Combicode combines your project's code into a single file for LLM context."""
     project_root = Path.cwd()
     click.echo(f"✨ Running Combicode in: {project_root}")
@@ -59,7 +90,7 @@ def cli(output, dry_run, include_ext, exclude, no_gitignore):
     for path in all_paths:
         if not path.is_file():
             continue
-        relative_path_str = str(path.relative_to(project_root))
+        relative_path_str = str(path.relative_to(project_root).as_posix())
         if spec.match_file(relative_path_str) or is_likely_binary(path):
             continue
         if allowed_extensions and path.suffix not in allowed_extensions:
@@ -70,18 +101,27 @@ def cli(output, dry_run, include_ext, exclude, no_gitignore):
         click.echo("❌ No files to include. Check your path or filters.", err=True)
         sys.exit(1)
 
-    # Sort files for deterministic output
     sorted_files = sorted(included_files)
+    relative_paths = [p.relative_to(project_root) for p in sorted_files]
 
     if dry_run:
-        click.echo("\n📋 Files to be included (Dry Run):")
-        for path in sorted_files:
-            click.echo(f"  - {path.relative_to(project_root).as_posix()}")
+        click.echo("\n📋 Files to be included (Dry Run):\n")
+        tree = generate_file_tree(relative_paths, project_root)
+        click.echo(tree)
         click.echo(f"\nTotal: {len(sorted_files)} files.")
         return
 
     try:
         with open(output, "w", encoding="utf-8", errors='replace') as outfile:
+            if not no_header:
+                outfile.write(SYSTEM_PROMPT + "\n")
+                outfile.write("## Project File Tree\n\n")
+                outfile.write("```\n")
+                tree = generate_file_tree(relative_paths, project_root)
+                outfile.write(tree + "\n")
+                outfile.write("```\n\n")
+                outfile.write("---\n\n")
+
             for path in sorted_files:
                 relative_path = path.relative_to(project_root).as_posix()
                 outfile.write(f"// FILE: {relative_path}\n")
@@ -98,4 +138,4 @@ def cli(output, dry_run, include_ext, exclude, no_gitignore):
         sys.exit(1)
 
 if __name__ == "__main__":
-    cli() 
+    cli()

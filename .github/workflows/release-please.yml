@@ -1,0 +1,29 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Release Please
+        id: release
+        uses: google-github-actions/release-please-action@v4
+        with:
+          # This tells Release Please to use the config file to handle the monorepo
+          config-file: release-please-config.json
+          # This tells Release Please what to use for the manifest file
+          manifest-file: .release-please-manifest.json
+
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+
+  # The following jobs will run after a release is created by Release Please
+  # They are dependent on the output of the release-please job
+  # Your existing publish workflows will trigger on the release event

@@ -145,3 +145,5 @@ ENV/
 .vscode/
 .idea/
 *.sublime-* 
+
+combicode.txt

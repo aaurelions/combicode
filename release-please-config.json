@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "component": "combicode",
+      "version-file": "combicode-py/combicode/__init__.py",
+      "extra-files": [
+        "combicode-js/package.json",
+        {
+          "type": "json",
+          "path": "combicode-js/package-lock.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    }
+  }
+}
