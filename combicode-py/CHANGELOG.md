@@ -1,0 +1,17 @@
+# Changelog
+
+## [1.2.0](https://github.com/aaurelions/combicode/compare/combicode-py-v1.1.0...combicode-py-v1.2.0) (2025-06-25)
+
+
+### Features
+
+* improve CLI output and version reporting ([7963a10](https://github.com/aaurelions/combicode/commit/7963a10782c2626608750de53023d37d327d51b2))
+* improve CLI output and version reporting ([e74f6d8](https://github.com/aaurelions/combicode/commit/e74f6d8fbed4f9cdf8ad82f3dae87069f66f7bb6))
+
+
+### Bug Fixes
+
+* **ci:** create explicit config for all versioned files ([c6212e7](https://github.com/aaurelions/combicode/commit/c6212e7801cf99876a4f996d7e1273f88bac51c7))
+* **ci:** permission error ([156b76d](https://github.com/aaurelions/combicode/commit/156b76d3ab1550123df2ded6b1da5d6e2e2cc008))
+* **py:** correctly include package data via pyproject.toml ([de312b8](https://github.com/aaurelions/combicode/commit/de312b81a8dccb049ccb0c7ddf94fbd4ba510600))
+* Use scoped npm package name and bump python version ([8a1b347](https://github.com/aaurelions/combicode/commit/8a1b347f6c54c9762acf354ef289c293d3ef21a3))
