@@ -28,5 +28,3 @@ jobs:
 
       - name: Publish to NPM
         run: npm publish --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # This now works with OIDC, no need to store a token
