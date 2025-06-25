@@ -4,7 +4,11 @@
     ".": {
       "release-type": "simple",
       "component": "combicode",
-      "version-file": "combicode-py/combicode/__init__.py",
+      "version-file": {
+        "type": "plain-text",
+        "path": "combicode-py/combicode/__init__.py",
+        "regex": "__version__ = \"(?<version>.*)\""
+      },
       "extra-files": [
         "combicode-js/package.json",
         {

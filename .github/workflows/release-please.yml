@@ -20,7 +20,6 @@ jobs:
         id: release
         uses: googleapis/release-please-action@v4
         with:
-          create-labels: false
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
