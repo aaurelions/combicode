@@ -28,3 +28,6 @@ combicode = "combicode.main:cli"
 
 [tool.setuptools.dynamic]
 version = { attr = "combicode.__version__" }
+
+[tool.setuptools.package-data]
+combicode = ["config/ignore.json"]
