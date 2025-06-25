@@ -4,23 +4,19 @@
     ".": {
       "release-type": "simple",
       "component": "combicode",
-      "version-file": {
-        "type": "plain-text",
-        "path": "combicode-py/combicode/__init__.py",
-        "regex": "__version__ = \"(?<version>.*)\""
-      },
+      "version-file": "combicode-js/package.json",
       "extra-files": [
-        {
-          "type": "json",
-          "path": "combicode-js/package.json",
-          "jsonpath": "$.version"
-        },
         {
           "type": "json",
           "path": "combicode-js/package-lock.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "python",
+          "path": "combicode-py/combicode/__init__.py"
         }
-      ]
+      ],
+      "tag-name": "v${version}"
     }
   }
 }
