@@ -7,13 +7,9 @@
       "version-file": "combicode-js/package.json",
       "extra-files": [
         {
-          "type": "json",
-          "path": "combicode-js/package-lock.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "python",
-          "path": "combicode-py/combicode/__init__.py"
+          "type": "plain-text",
+          "path": "combicode-py/combicode/__init__.py",
+          "regex": "__version__ = \"(?<version>.*)\""
         }
       ],
       "tag-name": "v${version}"
