@@ -1,6 +1,6 @@
 {
   "name": "combicode",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "A CLI tool to combine a project's codebase into a single file for LLM context.",
   "main": "index.js",
   "bin": {
@@ -24,7 +24,10 @@
     "prompt",
     "developer-tool",
     "codegen",
-    "chatgpt"
+    "chatgpt",
+    "llms.txt",
+    "llms",
+    "llms-full.txt"
   ],
   "author": "A. Aurelions",
   "license": "MIT",

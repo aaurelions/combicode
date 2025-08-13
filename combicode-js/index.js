@@ -8,13 +8,20 @@ const glob = require("fast-glob");
 
 const { version } = require("./package.json");
 
-const SYSTEM_PROMPT = `You are an expert software architect. The user is providing you with the complete source code for a project, contained in a single file. Your task is to meticulously analyze the provided codebase to gain a comprehensive understanding of its structure, functionality, dependencies, and overall architecture.
+const DEFAULT_SYSTEM_PROMPT = `You are an expert software architect. The user is providing you with the complete source code for a project, contained in a single file. Your task is to meticulously analyze the provided codebase to gain a comprehensive understanding of its structure, functionality, dependencies, and overall architecture.
 
 A file tree is provided below to give you a high-level overview. The subsequent sections contain the full content of each file, clearly marked with "// FILE: <path>".
 
 Your instructions are:
 1.  **Analyze Thoroughly:** Read through every file to understand its purpose and how it interacts with other files.
 2.  **Identify Key Components:** Pay close attention to configuration files (like package.json, pyproject.toml), entry points (like index.js, main.py), and core logic.
+`;
+
+const LLMS_TXT_SYSTEM_PROMPT = `You are an expert software architect. The user is providing you with the full documentation for a project, sourced from the project's 'llms.txt' file. This file contains the complete context needed to understand the project's features, APIs, and usage for a specific version. Your task is to act as a definitive source of truth based *only* on this provided documentation.
+
+When answering questions or writing code, adhere strictly to the functions, variables, and methods described in this context. Do not use or suggest any deprecated or older functionalities that are not present here.
+
+A file tree of the documentation source is provided below for a high-level overview. The subsequent sections contain the full content of each file, clearly marked with "// FILE: <path>".
 `;
 
 function loadDefaultIgnorePatterns() {
@@ -108,6 +115,12 @@ async function main() {
       describe: "Comma-separated glob patterns to exclude",
       type: "string",
     })
+    .option("l", {
+      alias: "llms-txt",
+      describe: "Use the system prompt for llms.txt context",
+      type: "boolean",
+      default: false,
+    })
     .option("no-gitignore", {
       describe: "Ignore the project's .gitignore file",
       type: "boolean",
@@ -192,7 +205,10 @@ async function main() {
   const outputStream = fs.createWriteStream(argv.output);
 
   if (!argv.noHeader) {
-    outputStream.write(SYSTEM_PROMPT + "\n");
+    const systemPrompt = argv.llmsTxt
+      ? LLMS_TXT_SYSTEM_PROMPT
+      : DEFAULT_SYSTEM_PROMPT;
+    outputStream.write(systemPrompt + "\n");
     outputStream.write("## Project File Tree\n\n");
     outputStream.write("```\n");
     const tree = generateFileTree(relativeFiles, projectRoot);

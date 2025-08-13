@@ -80,18 +80,28 @@ Use the `--exclude` or `-e` flag with comma-separated glob patterns.
 npx combicode -e "**/*_test.py,docs/**"
 ```
 
+### Generating Context for `llms.txt`
+
+The `--llms.txt` or `-l` flag is designed for projects that use an [`llms.txt`](https://llmstxt.org/) file to specify important documentation. When this flag is used, Combicode inserts a specialized system prompt telling the LLM that the provided context is the project's definitive documentation for a specific version. This helps the LLM provide more accurate answers and avoid using deprecated functions.
+
+```bash
+# Combine all markdown files for an llms.txt context
+npx combicode -l -i .md -o llms.txt
+```
+
 ## All CLI Options
 
-| Option           | Alias | Description                                                  | Default         |
-| ---------------- | ----- | ------------------------------------------------------------ | --------------- |
-| `--output`       | `-o`  | The name of the output file.                                 | `combicode.txt` |
-| `--dry-run`      | `-d`  | Preview files without creating the output file.              | `false`         |
-| `--include-ext`  | `-i`  | Comma-separated list of extensions to exclusively include.   | (include all)   |
-| `--exclude`      | `-e`  | Comma-separated list of additional glob patterns to exclude. | (none)          |
-| `--no-gitignore` |       | Do not use patterns from the project's `.gitignore` file.    | `false`         |
-| `--no-header`    |       | Omit the introductory prompt and file tree from the output.  | `false`         |
-| `--version`      | `-v`  | Show the version number.                                     |                 |
-| `--help`         | `-h`  | Show the help message.                                       |                 |
+| Option           | Alias | Description                                                                    | Default         |
+| ---------------- | ----- | ------------------------------------------------------------------------------ | --------------- |
+| `--output`       | `-o`  | The name of the output file.                                                   | `combicode.txt` |
+| `--dry-run`      | `-d`  | Preview files without creating the output file.                                | `false`         |
+| `--include-ext`  | `-i`  | Comma-separated list of extensions to exclusively include.                     | (include all)   |
+| `--exclude`      | `-e`  | Comma-separated list of additional glob patterns to exclude.                   | (none)          |
+| `--llms-txt`     | `-l`  | Use a specialized system prompt for context generated from an `llms.txt` file. | `false`         |
+| `--no-gitignore` |       | Do not use patterns from the project's `.gitignore` file.                      | `false`         |
+| `--no-header`    |       | Omit the introductory prompt and file tree from the output.                    | `false`         |
+| `--version`      | `-v`  | Show the version number.                                                       |                 |
+| `--help`         | `-h`  | Show the help message.                                                         |                 |
 
 ## License
 

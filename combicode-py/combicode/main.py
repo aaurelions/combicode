@@ -6,13 +6,20 @@ import click
 import pathspec
 from importlib import metadata
 
-SYSTEM_PROMPT = """You are an expert software architect. The user is providing you with the complete source code for a project, contained in a single file. Your task is to meticulously analyze the provided codebase to gain a comprehensive understanding of its structure, functionality, dependencies, and overall architecture.
+DEFAULT_SYSTEM_PROMPT = """You are an expert software architect. The user is providing you with the complete source code for a project, contained in a single file. Your task is to meticulously analyze the provided codebase to gain a comprehensive understanding of its structure, functionality, dependencies, and overall architecture.
 
 A file tree is provided below to give you a high-level overview. The subsequent sections contain the full content of each file, clearly marked with "// FILE: <path>".
 
 Your instructions are:
 1.  **Analyze Thoroughly:** Read through every file to understand its purpose and how it interacts with other files.
 2.  **Identify Key Components:** Pay close attention to configuration files (like package.json, pyproject.toml), entry points (like index.js, main.py), and core logic.
+"""
+
+LLMS_TXT_SYSTEM_PROMPT = """You are an expert software architect. The user is providing you with the full documentation for a project, sourced from the project's 'llms.txt' file. This file contains the complete context needed to understand the project's features, APIs, and usage for a specific version. Your task is to act as a definitive source of truth based *only* on this provided documentation.
+
+When answering questions or writing code, adhere strictly to the functions, variables, and methods described in this context. Do not use or suggest any deprecated or older functionalities that are not present here.
+
+A file tree of the documentation source is provided below for a high-level overview. The subsequent sections contain the full content of each file, clearly marked with "// FILE: <path>".
 """
 
 def load_default_ignore_patterns():
@@ -61,10 +68,11 @@ def generate_file_tree(relative_paths: list[Path], root: Path) -> str:
 @click.option("-d", "--dry-run", is_flag=True, help="Preview files without creating the output file.")
 @click.option("-i", "--include-ext", help="Comma-separated list of extensions to exclusively include (e.g., .py,.js).")
 @click.option("-e", "--exclude", help="Comma-separated list of additional glob patterns to exclude.")
+@click.option("-l", "--llms-txt", is_flag=True, help="Use the system prompt for llms.txt context.")
 @click.option("--no-gitignore", is_flag=True, help="Do not use patterns from the project's .gitignore file.")
 @click.option("--no-header", is_flag=True, help="Omit the introductory prompt and file tree from the output.")
 @click.version_option(metadata.version("combicode"), '-v', '--version', prog_name="Combicode", message="%(prog)s (Python), version %(version)s")
-def cli(output, dry_run, include_ext, exclude, no_gitignore, no_header):
+def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header):
     """Combicode combines your project's code into a single file for LLM context."""
     project_root = Path.cwd()
     click.echo(f"✨ Running Combicode in: {project_root}")
@@ -114,7 +122,8 @@ def cli(output, dry_run, include_ext, exclude, no_gitignore, no_header):
     try:
         with open(output, "w", encoding="utf-8", errors='replace') as outfile:
             if not no_header:
-                outfile.write(SYSTEM_PROMPT + "\n")
+                system_prompt = LLMS_TXT_SYSTEM_PROMPT if llms_txt else DEFAULT_SYSTEM_PROMPT
+                outfile.write(system_prompt + "\n")
                 outfile.write("## Project File Tree\n\n")
                 outfile.write("```\n")
                 tree = generate_file_tree(relative_paths, project_root)
