@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/aaurelions/combicode/compare/combicode-py-v1.3.0...combicode-py-v1.4.0) (2025-08-13)
+
+
+### Features
+
+* Add --llms-txt flag for llms.txt documentation context ([0817554](https://github.com/aaurelions/combicode/commit/081755435594b0ca5208609b2724eb47bd73c2dc))
+
 ## [1.3.0](https://github.com/aaurelions/combicode/compare/combicode-py-v1.2.1...combicode-py-v1.3.0) (2025-06-25)
 
 
