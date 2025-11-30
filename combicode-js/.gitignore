@@ -112,6 +112,3 @@ dist
 
 # macOS
 .DS_Store 
-
-temp_env
-config

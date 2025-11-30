@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.5.0](https://github.com/aaurelions/combicode/compare/combicode-js-v1.4.0...combicode-js-v1.5.0) (2025-11-30)
+## [1.5.2](https://github.com/aaurelions/combicode/compare/combicode-js-v1.4.0...combicode-js-v1.5.2) (2025-11-30)
 
 ### Features
 
