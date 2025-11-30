@@ -2,9 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
-// CHANGE: Use the main 'yargs' entry point instead of 'yargs/yargs'
-// This avoids the ESM resolution error in CI environments.
-const yargs = require("yargs");
+const yargs = require("yargs/yargs");
 const { hideBin } = require("yargs/helpers");
 const glob = require("fast-glob");
 
