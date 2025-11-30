@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.3](https://github.com/aaurelions/combicode/compare/combicode-py-v1.5.2...combicode-py-v1.5.3) (2025-11-30)
+
+### Bug Fixes
+
+- **cli:** prevent the output file (e.g., `combicode.txt`) from recursively including itself in the generated content
+
 ## [1.5.2](https://github.com/aaurelions/combicode/compare/combicode-py-v1.4.0...combicode-py-v1.5.2) (2025-11-30)
 
 ### Features

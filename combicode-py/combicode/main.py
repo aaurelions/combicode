@@ -115,11 +115,21 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
 
     all_paths = list(project_root.rglob("*"))
     
+    # Calculate the absolute path of the output file to prevent self-inclusion
+    try:
+        output_path = (project_root / output).resolve()
+    except OSError:
+        output_path = None
+
     included_files_data = []
     allowed_extensions = {f".{ext.strip('.')}" for ext in include_ext.split(',')} if include_ext else None
 
     for path in all_paths:
         if not path.is_file():
+            continue
+
+        # Prevent the output file from being included in the list
+        if output_path and path.resolve() == output_path:
             continue
         
         try:

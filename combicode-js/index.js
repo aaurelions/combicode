@@ -181,6 +181,9 @@ async function main() {
     ignorePatterns.push(...argv.exclude.split(","));
   }
 
+  // Calculate the absolute path of the output file to prevent self-inclusion
+  const absoluteOutputPath = path.resolve(projectRoot, argv.output);
+
   let allFiles = await glob("**/*", {
     cwd: projectRoot,
     dot: true,
@@ -200,6 +203,11 @@ async function main() {
   const includedFiles = allFiles
     .filter((fileObj) => {
       const file = fileObj.path;
+
+      // Prevent the output file from being included in the list
+      // We use path.normalize to handle potential differences in separators (e.g., / vs \)
+      if (path.normalize(file) === absoluteOutputPath) return false;
+
       if (!fileObj.stats || fileObj.stats.isDirectory()) return false;
       if (isLikelyBinary(file)) return false;
       if (allowedExtensions && !allowedExtensions.has(path.extname(file)))
