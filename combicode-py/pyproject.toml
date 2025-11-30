@@ -31,3 +31,6 @@ version = { attr = "combicode.__version__" }
 
 [tool.setuptools.package-data]
 combicode = ["config/ignore.json"]
+
+[project.optional-dependencies]
+test = ["pytest"]

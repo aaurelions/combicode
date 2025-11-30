@@ -42,3 +42,6 @@ coverage.xml
 
 # Logs
 *.log 
+
+tmp_path
+config

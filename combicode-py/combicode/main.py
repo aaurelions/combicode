@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import math
 from pathlib import Path
 import click
 import pathspec
@@ -8,7 +9,7 @@ from importlib import metadata
 
 DEFAULT_SYSTEM_PROMPT = """You are an expert software architect. The user is providing you with the complete source code for a project, contained in a single file. Your task is to meticulously analyze the provided codebase to gain a comprehensive understanding of its structure, functionality, dependencies, and overall architecture.
 
-A file tree is provided below to give you a high-level overview. The subsequent sections contain the full content of each file, clearly marked with "// FILE: <path>".
+A file tree is provided below to give you a high-level overview. The subsequent sections contain the full content of each file, clearly marked with a file header.
 
 Your instructions are:
 1.  **Analyze Thoroughly:** Read through every file to understand its purpose and how it interacts with other files.
@@ -19,7 +20,7 @@ LLMS_TXT_SYSTEM_PROMPT = """You are an expert software architect. The user is pr
 
 When answering questions or writing code, adhere strictly to the functions, variables, and methods described in this context. Do not use or suggest any deprecated or older functionalities that are not present here.
 
-A file tree of the documentation source is provided below for a high-level overview. The subsequent sections contain the full content of each file, clearly marked with "// FILE: <path>".
+A file tree of the documentation source is provided below for a high-level overview. The subsequent sections contain the full content of each file, clearly marked with a file header.
 """
 
 def load_default_ignore_patterns():
@@ -31,8 +32,6 @@ def load_default_ignore_patterns():
         click.echo(f"❌ Critical: Could not read or parse bundled ignore config: {e}", err=True)
         sys.exit(1)
 
-DEFAULT_IGNORE_PATTERNS = load_default_ignore_patterns()
-
 def is_likely_binary(path: Path) -> bool:
     try:
         with path.open('rb') as f:
@@ -40,24 +39,45 @@ def is_likely_binary(path: Path) -> bool:
     except IOError:
         return True
 
-def generate_file_tree(relative_paths: list[Path], root: Path) -> str:
+def format_bytes(size: int) -> str:
+    if size == 0:
+        return "0 B"
+    size_name = ("B", "KB", "MB", "GB", "TB")
+    i = int(math.floor(math.log(size, 1024)))
+    p = math.pow(1024, i)
+    s = round(size / p, 1)
+    return f"{s}{size_name[i]}"
+
+def generate_file_tree(files_data: list[dict], root: Path) -> str:
     tree_lines = [f"{root.name}/"]
     structure = {}
-    for path in sorted(relative_paths):
-        parts = path.parts
+    
+    # Build structure
+    for item in files_data:
+        path_parts = item['relative_path'].parts
         current_level = structure
-        for part in parts:
-            current_level = current_level.setdefault(part, {})
+        for i, part in enumerate(path_parts):
+            is_file = (i == len(path_parts) - 1)
+            if is_file:
+                current_level[part] = item['formatted_size']
+            else:
+                current_level = current_level.setdefault(part, {})
 
     def build_tree(level, prefix=""):
         entries = sorted(level.keys())
         for i, entry in enumerate(entries):
             is_last = i == len(entries) - 1
             connector = "└── " if is_last else "├── "
-            tree_lines.append(f"{prefix}{connector}{entry}")
-            if level[entry]:
-                new_prefix = prefix + ("    " if is_last else "│   ")
-                build_tree(level[entry], new_prefix)
+            
+            value = level[entry]
+            
+            if isinstance(value, str):
+                tree_lines.append(f"{prefix}{connector}[{value}] {entry}")
+            else:
+                tree_lines.append(f"{prefix}{connector}{entry}")
+                if value:
+                    new_prefix = prefix + ("    " if is_last else "│   ")
+                    build_tree(value, new_prefix)
 
     build_tree(structure)
     return "\n".join(tree_lines)
@@ -74,10 +94,13 @@ def generate_file_tree(relative_paths: list[Path], root: Path) -> str:
 @click.version_option(metadata.version("combicode"), '-v', '--version', prog_name="Combicode", message="%(prog)s (Python), version %(version)s")
 def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header):
     """Combicode combines your project's code into a single file for LLM context."""
-    project_root = Path.cwd()
+    
+    default_ignore_patterns = load_default_ignore_patterns()
+
+    project_root = Path.cwd().resolve()
     click.echo(f"✨ Running Combicode in: {project_root}")
 
-    all_ignore_patterns = DEFAULT_IGNORE_PATTERNS.copy()
+    all_ignore_patterns = default_ignore_patterns.copy()
     if not no_gitignore:
         gitignore_path = project_root / ".gitignore"
         if gitignore_path.exists():
@@ -90,33 +113,48 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
 
     spec = pathspec.PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, all_ignore_patterns)
 
-    all_paths = project_root.rglob("*")
+    all_paths = list(project_root.rglob("*"))
     
-    included_files = []
+    included_files_data = []
     allowed_extensions = {f".{ext.strip('.')}" for ext in include_ext.split(',')} if include_ext else None
 
     for path in all_paths:
         if not path.is_file():
             continue
-        relative_path_str = str(path.relative_to(project_root).as_posix())
+        
+        try:
+            relative_path = path.relative_to(project_root)
+        except ValueError:
+            continue
+
+        relative_path_str = str(relative_path.as_posix())
+        
         if spec.match_file(relative_path_str) or is_likely_binary(path):
             continue
         if allowed_extensions and path.suffix not in allowed_extensions:
             continue
-        included_files.append(path)
+            
+        try:
+            size = path.stat().st_size
+            included_files_data.append({
+                'path': path,
+                'relative_path': relative_path,
+                'formatted_size': format_bytes(size)
+            })
+        except OSError:
+            continue
 
-    if not included_files:
+    if not included_files_data:
         click.echo("❌ No files to include. Check your path or filters.", err=True)
         sys.exit(1)
 
-    sorted_files = sorted(included_files)
-    relative_paths = [p.relative_to(project_root) for p in sorted_files]
+    included_files_data.sort(key=lambda x: x['path'])
 
     if dry_run:
         click.echo("\n📋 Files to be included (Dry Run):\n")
-        tree = generate_file_tree(relative_paths, project_root)
+        tree = generate_file_tree(included_files_data, project_root)
         click.echo(tree)
-        click.echo(f"\nTotal: {len(sorted_files)} files.")
+        click.echo(f"\nTotal: {len(included_files_data)} files.")
         return
 
     try:
@@ -126,22 +164,22 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
                 outfile.write(system_prompt + "\n")
                 outfile.write("## Project File Tree\n\n")
                 outfile.write("```\n")
-                tree = generate_file_tree(relative_paths, project_root)
+                tree = generate_file_tree(included_files_data, project_root)
                 outfile.write(tree + "\n")
                 outfile.write("```\n\n")
-                outfile.write("---\n\n")
+                outfile.write("---\n\n");
 
-            for path in sorted_files:
-                relative_path = path.relative_to(project_root).as_posix()
-                outfile.write(f"// FILE: {relative_path}\n")
+            for item in included_files_data:
+                relative_path = item['relative_path'].as_posix()
+                outfile.write(f"### **FILE:** `{relative_path}`\n")
                 outfile.write("```\n")
                 try:
-                    content = path.read_text(encoding="utf-8")
+                    content = item['path'].read_text(encoding="utf-8")
                     outfile.write(content)
                 except Exception as e:
                     outfile.write(f"... (error reading file: {e}) ...")
                 outfile.write("\n```\n\n")
-        click.echo(f"\n✅ Success! Combined {len(sorted_files)} files into '{output}'.")
+        click.echo(f"\n✅ Success! Combined {len(included_files_data)} files into '{output}'.")
     except IOError as e:
         click.echo(f"\n❌ Error writing to output file: {e}", err=True)
         sys.exit(1)

@@ -10,7 +10,7 @@ const { version } = require("./package.json");
 
 const DEFAULT_SYSTEM_PROMPT = `You are an expert software architect. The user is providing you with the complete source code for a project, contained in a single file. Your task is to meticulously analyze the provided codebase to gain a comprehensive understanding of its structure, functionality, dependencies, and overall architecture.
 
-A file tree is provided below to give you a high-level overview. The subsequent sections contain the full content of each file, clearly marked with "// FILE: <path>".
+A file tree is provided below to give you a high-level overview. The subsequent sections contain the full content of each file, clearly marked with a file header.
 
 Your instructions are:
 1.  **Analyze Thoroughly:** Read through every file to understand its purpose and how it interacts with other files.
@@ -21,7 +21,7 @@ const LLMS_TXT_SYSTEM_PROMPT = `You are an expert software architect. The user i
 
 When answering questions or writing code, adhere strictly to the functions, variables, and methods described in this context. Do not use or suggest any deprecated or older functionalities that are not present here.
 
-A file tree of the documentation source is provided below for a high-level overview. The subsequent sections contain the full content of each file, clearly marked with "// FILE: <path>".
+A file tree of the documentation source is provided below for a high-level overview. The subsequent sections contain the full content of each file, clearly marked with a file header.
 `;
 
 function loadDefaultIgnorePatterns() {
@@ -53,18 +53,33 @@ function isLikelyBinary(file) {
   }
 }
 
-function generateFileTree(files, root) {
+function formatBytes(bytes, decimals = 1) {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + "" + sizes[i];
+}
+
+function generateFileTree(filesWithSize, root) {
   let tree = `${path.basename(root)}/\n`;
   const structure = {};
 
-  files.forEach((file) => {
-    const parts = file.split(path.sep);
+  // Build the structure
+  filesWithSize.forEach(({ relativePath, formattedSize }) => {
+    const parts = relativePath.split(path.sep);
     let currentLevel = structure;
-    parts.forEach((part) => {
-      if (!currentLevel[part]) {
-        currentLevel[part] = {};
+    parts.forEach((part, index) => {
+      const isFile = index === parts.length - 1;
+      if (isFile) {
+        currentLevel[part] = formattedSize;
+      } else {
+        if (!currentLevel[part]) {
+          currentLevel[part] = {};
+        }
+        currentLevel = currentLevel[part];
       }
-      currentLevel = currentLevel[part];
     });
   });
 
@@ -72,9 +87,16 @@ function generateFileTree(files, root) {
     const entries = Object.keys(level);
     entries.forEach((entry, index) => {
       const isLast = index === entries.length - 1;
-      tree += `${prefix}${isLast ? "└── " : "├── "}${entry}\n`;
-      if (Object.keys(level[entry]).length > 0) {
-        buildTree(level[entry], `${prefix}${isLast ? "    " : "│   "}`);
+      const value = level[entry];
+      const isFile = typeof value === "string";
+
+      const connector = isLast ? "└── " : "├── ";
+
+      if (isFile) {
+        tree += `${prefix}${connector}[${value}] ${entry}\n`;
+      } else {
+        tree += `${prefix}${connector}${entry}\n`;
+        buildTree(value, `${prefix}${isLast ? "    " : "│   "}`);
       }
     });
   };
@@ -163,7 +185,7 @@ async function main() {
     dot: true,
     ignore: ignorePatterns,
     absolute: true,
-    stats: false,
+    stats: true,
   });
 
   const allowedExtensions = argv.includeExt
@@ -175,28 +197,30 @@ async function main() {
     : null;
 
   const includedFiles = allFiles
-    .filter((file) => {
-      const stats = fs.statSync(file, { throwIfNoEntry: false });
-      if (!stats || stats.isDirectory()) return false;
+    .filter((fileObj) => {
+      const file = fileObj.path;
+      if (!fileObj.stats || fileObj.stats.isDirectory()) return false;
       if (isLikelyBinary(file)) return false;
       if (allowedExtensions && !allowedExtensions.has(path.extname(file)))
         return false;
       return true;
     })
-    .sort();
+    .map((fileObj) => ({
+      path: fileObj.path,
+      relativePath: path.relative(projectRoot, fileObj.path),
+      size: fileObj.stats.size,
+      formattedSize: formatBytes(fileObj.stats.size),
+    }))
+    .sort((a, b) => a.path.localeCompare(b.path));
 
   if (includedFiles.length === 0) {
     console.error("❌ No files to include. Check your path or filters.");
     process.exit(1);
   }
 
-  const relativeFiles = includedFiles.map((file) =>
-    path.relative(projectRoot, file)
-  );
-
   if (argv.dryRun) {
     console.log("\n📋 Files to be included (Dry Run):\n");
-    const tree = generateFileTree(relativeFiles, projectRoot);
+    const tree = generateFileTree(includedFiles, projectRoot);
     console.log(tree);
     console.log(`\nTotal: ${includedFiles.length} files.`);
     return;
@@ -211,18 +235,18 @@ async function main() {
     outputStream.write(systemPrompt + "\n");
     outputStream.write("## Project File Tree\n\n");
     outputStream.write("```\n");
-    const tree = generateFileTree(relativeFiles, projectRoot);
+    const tree = generateFileTree(includedFiles, projectRoot);
     outputStream.write(tree);
     outputStream.write("```\n\n");
     outputStream.write("---\n\n");
   }
 
-  for (const file of includedFiles) {
-    const relativePath = path.relative(projectRoot, file).replace(/\\/g, "/");
-    outputStream.write(`// FILE: ${relativePath}` + "\n");
+  for (const fileObj of includedFiles) {
+    const relativePath = fileObj.relativePath.replace(/\\/g, "/");
+    outputStream.write(`### **FILE:** \`${relativePath}\`\n`);
     outputStream.write("```\n");
     try {
-      const content = fs.readFileSync(file, "utf8");
+      const content = fs.readFileSync(fileObj.path, "utf8");
       outputStream.write(content);
     } catch (e) {
       outputStream.write(`... (error reading file: ${e.message}) ...`);
