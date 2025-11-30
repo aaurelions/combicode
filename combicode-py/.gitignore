@@ -45,3 +45,5 @@ coverage.xml
 
 tmp_path
 config
+
+.pytest_cache
