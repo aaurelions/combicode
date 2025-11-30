@@ -2,7 +2,9 @@
 
 const fs = require("fs");
 const path = require("path");
-const yargs = require("yargs/yargs");
+// CHANGE: Use the main 'yargs' entry point instead of 'yargs/yargs'
+// This avoids the ESM resolution error in CI environments.
+const yargs = require("yargs");
 const { hideBin } = require("yargs/helpers");
 const glob = require("fast-glob");
 
@@ -112,6 +114,7 @@ async function main() {
     process.exit(0);
   }
 
+  // Yargs singleton usage works correctly with arguments passed here
   const argv = yargs(rawArgv)
     .scriptName("combicode")
     .usage("$0 [options]")
