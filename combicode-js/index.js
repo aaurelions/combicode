@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const yargs = require("yargs/yargs");
 const { hideBin } = require("yargs/helpers");
-const glob = require("fast-glob");
+const ignore = require("ignore");
 
 const { version } = require("./package.json");
 
@@ -24,26 +24,14 @@ When answering questions or writing code, adhere strictly to the functions, vari
 A file tree of the documentation source is provided below for a high-level overview. The subsequent sections contain the full content of each file, clearly marked with a file header.
 `;
 
-function loadDefaultIgnorePatterns() {
-  const configPath = path.resolve(__dirname, "config", "ignore.json");
-  try {
-    const rawConfig = fs.readFileSync(configPath, "utf8");
-    return JSON.parse(rawConfig);
-  } catch (err) {
-    console.error(
-      `❌ Critical: Could not read or parse bundled ignore config at ${configPath}`
-    );
-    process.exit(1);
-  }
-}
+// Minimal safety ignores that should always apply
+const SAFETY_IGNORES = [".git", ".DS_Store"];
 
-const DEFAULT_IGNORE_PATTERNS = loadDefaultIgnorePatterns();
-
-function isLikelyBinary(file) {
+function isLikelyBinary(filePath) {
   const buffer = Buffer.alloc(512);
   let fd;
   try {
-    fd = fs.openSync(file, "r");
+    fd = fs.openSync(filePath, "r");
     const bytesRead = fs.readSync(fd, buffer, 0, 512, 0);
     return buffer.slice(0, bytesRead).includes(0);
   } catch (e) {
@@ -62,11 +50,129 @@ function formatBytes(bytes, decimals = 1) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + "" + sizes[i];
 }
 
+/**
+ * Recursively walks directories, respecting .gitignore files at each level.
+ */
+function walkDirectory(
+  currentDir,
+  rootDir,
+  ignoreChain,
+  allowedExts,
+  absoluteOutputPath,
+  useGitIgnore,
+  stats // { scanned: 0, ignored: 0 }
+) {
+  let results = [];
+  let currentIgnoreManager = null;
+
+  // 1. Check for local .gitignore and add to chain for this scope
+  if (useGitIgnore) {
+    const gitignorePath = path.join(currentDir, ".gitignore");
+    if (fs.existsSync(gitignorePath)) {
+      try {
+        const content = fs.readFileSync(gitignorePath, "utf8");
+        const ig = ignore().add(content);
+        currentIgnoreManager = { manager: ig, root: currentDir };
+      } catch (e) {
+        // Warning could go here
+      }
+    }
+  }
+
+  // Create a new chain for this directory and its children
+  const nextIgnoreChain = currentIgnoreManager
+    ? [...ignoreChain, currentIgnoreManager]
+    : ignoreChain;
+
+  let entries;
+  try {
+    entries = fs.readdirSync(currentDir, { withFileTypes: true });
+  } catch (e) {
+    return [];
+  }
+
+  for (const entry of entries) {
+    const fullPath = path.join(currentDir, entry.name);
+
+    // SKIP CHECK: Output file
+    if (path.resolve(fullPath) === absoluteOutputPath) continue;
+
+    // SKIP CHECK: Ignore Chain
+    let shouldIgnore = false;
+    for (const item of nextIgnoreChain) {
+      // Calculate path relative to the specific ignore manager's root
+      // IMPORTANT: Normalize to POSIX slashes for 'ignore' package compatibility
+      let relToIgnoreRoot = path.relative(item.root, fullPath);
+
+      if (path.sep === "\\") {
+        relToIgnoreRoot = relToIgnoreRoot.replace(/\\/g, "/");
+      }
+
+      // If checking a directory, ensure trailing slash for proper 'ignore' directory matching
+      if (entry.isDirectory() && !relToIgnoreRoot.endsWith("/")) {
+        relToIgnoreRoot += "/";
+      }
+
+      if (item.manager.ignores(relToIgnoreRoot)) {
+        shouldIgnore = true;
+        break;
+      }
+    }
+
+    if (shouldIgnore) {
+      stats.ignored++;
+      continue;
+    }
+
+    if (entry.isDirectory()) {
+      // Recurse
+      results = results.concat(
+        walkDirectory(
+          fullPath,
+          rootDir,
+          nextIgnoreChain,
+          allowedExts,
+          absoluteOutputPath,
+          useGitIgnore,
+          stats
+        )
+      );
+    } else if (entry.isFile()) {
+      // SKIP CHECK: Binary
+      if (isLikelyBinary(fullPath)) {
+        stats.ignored++;
+        continue;
+      }
+
+      // SKIP CHECK: Extensions
+      if (allowedExts && !allowedExts.has(path.extname(entry.name))) {
+        stats.ignored++;
+        continue;
+      }
+
+      try {
+        const fileStats = fs.statSync(fullPath);
+        const relativeToRoot = path.relative(rootDir, fullPath);
+        stats.scanned++;
+        results.push({
+          path: fullPath,
+          relativePath: relativeToRoot,
+          size: fileStats.size,
+          formattedSize: formatBytes(fileStats.size),
+        });
+      } catch (e) {
+        // Skip inaccessible files
+      }
+    }
+  }
+
+  return results;
+}
+
 function generateFileTree(filesWithSize, root) {
   let tree = `${path.basename(root)}/\n`;
   const structure = {};
 
-  // Build the structure
   filesWithSize.forEach(({ relativePath, formattedSize }) => {
     const parts = relativePath.split(path.sep);
     let currentLevel = structure;
@@ -89,7 +195,6 @@ function generateFileTree(filesWithSize, root) {
       const isLast = index === entries.length - 1;
       const value = level[entry];
       const isFile = typeof value === "string";
-
       const connector = isLast ? "└── " : "├── ";
 
       if (isFile) {
@@ -112,7 +217,6 @@ async function main() {
     process.exit(0);
   }
 
-  // Yargs singleton usage works correctly with arguments passed here
   const argv = yargs(rawArgv)
     .scriptName("combicode")
     .usage("$0 [options]")
@@ -160,37 +264,20 @@ async function main() {
     .alias("h", "help").argv;
 
   const projectRoot = process.cwd();
-  console.log(`✨ Running Combicode in: ${projectRoot}`);
+  console.log(`\n✨ Combicode v${version}`);
+  console.log(`📂 Root: ${projectRoot}`);
 
-  const ignorePatterns = [...DEFAULT_IGNORE_PATTERNS];
+  const rootIgnoreManager = ignore();
 
-  if (!argv.noGitignore) {
-    const gitignorePath = path.join(projectRoot, ".gitignore");
-    if (fs.existsSync(gitignorePath)) {
-      console.log("🔎 Found and using .gitignore");
-      const gitignoreContent = fs.readFileSync(gitignorePath, "utf8");
-      ignorePatterns.push(
-        ...gitignoreContent
-          .split(/\r?\n/)
-          .filter((line) => line && !line.startsWith("#"))
-      );
-    }
-  }
+  // Only add minimal safety ignores + CLI excludes.
+  // No external JSON config is loaded.
+  rootIgnoreManager.add(SAFETY_IGNORES);
 
   if (argv.exclude) {
-    ignorePatterns.push(...argv.exclude.split(","));
+    rootIgnoreManager.add(argv.exclude.split(","));
   }
 
-  // Calculate the absolute path of the output file to prevent self-inclusion
   const absoluteOutputPath = path.resolve(projectRoot, argv.output);
-
-  let allFiles = await glob("**/*", {
-    cwd: projectRoot,
-    dot: true,
-    ignore: ignorePatterns,
-    absolute: true,
-    stats: true,
-  });
 
   const allowedExtensions = argv.includeExt
     ? new Set(
@@ -200,30 +287,35 @@ async function main() {
       )
     : null;
 
-  const includedFiles = allFiles
-    .filter((fileObj) => {
-      const file = fileObj.path;
+  // Initialize the ignore chain with the root manager
+  const ignoreChain = [{ manager: rootIgnoreManager, root: projectRoot }];
 
-      // Prevent the output file from being included in the list
-      // We use path.normalize to handle potential differences in separators (e.g., / vs \)
-      if (path.normalize(file) === absoluteOutputPath) return false;
+  // Statistics container
+  const stats = { scanned: 0, ignored: 0 };
 
-      if (!fileObj.stats || fileObj.stats.isDirectory()) return false;
-      if (isLikelyBinary(file)) return false;
-      if (allowedExtensions && !allowedExtensions.has(path.extname(file)))
-        return false;
-      return true;
-    })
-    .map((fileObj) => ({
-      path: fileObj.path,
-      relativePath: path.relative(projectRoot, fileObj.path),
-      size: fileObj.stats.size,
-      formattedSize: formatBytes(fileObj.stats.size),
-    }))
-    .sort((a, b) => a.path.localeCompare(b.path));
+  // Perform Recursive Walk
+  const includedFiles = walkDirectory(
+    projectRoot,
+    projectRoot,
+    ignoreChain,
+    allowedExtensions,
+    absoluteOutputPath,
+    !argv.noGitignore,
+    stats
+  );
+
+  includedFiles.sort((a, b) => a.path.localeCompare(b.path));
+
+  // Calculate total size of included files
+  const totalSizeBytes = includedFiles.reduce(
+    (acc, file) => acc + file.size,
+    0
+  );
 
   if (includedFiles.length === 0) {
-    console.error("❌ No files to include. Check your path or filters.");
+    console.error(
+      "\n❌ No files to include. Check your path, .gitignore, or filters."
+    );
     process.exit(1);
   }
 
@@ -231,23 +323,34 @@ async function main() {
     console.log("\n📋 Files to be included (Dry Run):\n");
     const tree = generateFileTree(includedFiles, projectRoot);
     console.log(tree);
-    console.log(`\nTotal: ${includedFiles.length} files.`);
+    console.log("\n📊 Summary (Dry Run):");
+    console.log(
+      `   • Included: ${includedFiles.length} files (${formatBytes(
+        totalSizeBytes
+      )})`
+    );
+    console.log(`   • Ignored:  ${stats.ignored} files/dirs`);
     return;
   }
 
   const outputStream = fs.createWriteStream(argv.output);
+  let totalLines = 0;
 
   if (!argv.noHeader) {
     const systemPrompt = argv.llmsTxt
       ? LLMS_TXT_SYSTEM_PROMPT
       : DEFAULT_SYSTEM_PROMPT;
     outputStream.write(systemPrompt + "\n");
+    totalLines += systemPrompt.split("\n").length;
+
     outputStream.write("## Project File Tree\n\n");
     outputStream.write("```\n");
     const tree = generateFileTree(includedFiles, projectRoot);
     outputStream.write(tree);
     outputStream.write("```\n\n");
     outputStream.write("---\n\n");
+
+    totalLines += tree.split("\n").length + 5;
   }
 
   for (const fileObj of includedFiles) {
@@ -257,16 +360,24 @@ async function main() {
     try {
       const content = fs.readFileSync(fileObj.path, "utf8");
       outputStream.write(content);
+      totalLines += content.split("\n").length;
     } catch (e) {
       outputStream.write(`... (error reading file: ${e.message}) ...`);
     }
     outputStream.write("\n```\n\n");
+    totalLines += 4; // Headers/footers lines
   }
   outputStream.end();
 
+  console.log(`\n📊 Summary:`);
   console.log(
-    `\n✅ Success! Combined ${includedFiles.length} files into '${argv.output}'.`
+    `   • Included: ${includedFiles.length} files (${formatBytes(
+      totalSizeBytes
+    )})`
   );
+  console.log(`   • Ignored:  ${stats.ignored} files/dirs`);
+  console.log(`   • Output:   ${argv.output} (~${totalLines} lines)`);
+  console.log(`\n✅ Done!`);
 }
 
 main().catch((err) => {

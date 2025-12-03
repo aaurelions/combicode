@@ -1,5 +1,17 @@
 # Changelog
 
+# Changelog
+
+## [1.5.4](https://github.com/aaurelions/combicode/compare/combicode-js-v1.5.3...combicode-js-v1.5.4) (2025-12-03)
+
+### Features
+
+- **ignore:** implement full support for nested `.gitignore` files, ensuring exclusion rules are applied correctly within subdirectories
+
+### Bug Fixes
+
+- **deps:** replace `fast-glob` with `ignore` and recursive directory walking for accurate git-like pattern matching
+
 ## [1.5.3](https://github.com/aaurelions/combicode/compare/combicode-js-v1.5.2...combicode-js-v1.5.3) (2025-11-30)
 
 ### Bug Fixes

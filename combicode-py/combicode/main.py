@@ -23,14 +23,8 @@ When answering questions or writing code, adhere strictly to the functions, vari
 A file tree of the documentation source is provided below for a high-level overview. The subsequent sections contain the full content of each file, clearly marked with a file header.
 """
 
-def load_default_ignore_patterns():
-    try:
-        config_path = Path(__file__).resolve().parent / 'config' / 'ignore.json'
-        with config_path.open('r', encoding='utf-8') as f:
-            return json.load(f)
-    except (IOError, json.JSONDecodeError) as e:
-        click.echo(f"❌ Critical: Could not read or parse bundled ignore config: {e}", err=True)
-        sys.exit(1)
+# Minimal safety ignores
+SAFETY_IGNORES = [".git", ".DS_Store"]
 
 def is_likely_binary(path: Path) -> bool:
     try:
@@ -95,27 +89,17 @@ def generate_file_tree(files_data: list[dict], root: Path) -> str:
 def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header):
     """Combicode combines your project's code into a single file for LLM context."""
     
-    default_ignore_patterns = load_default_ignore_patterns()
-
     project_root = Path.cwd().resolve()
-    click.echo(f"✨ Running Combicode in: {project_root}")
+    click.echo(f"\n✨ Combicode v{metadata.version('combicode')}")
+    click.echo(f"📂 Root: {project_root}")
 
-    all_ignore_patterns = default_ignore_patterns.copy()
-    if not no_gitignore:
-        gitignore_path = project_root / ".gitignore"
-        if gitignore_path.exists():
-            click.echo("🔎 Found and using .gitignore")
-            with gitignore_path.open("r", encoding='utf-8') as f:
-                all_ignore_patterns.extend(line for line in f.read().splitlines() if line and not line.startswith('#'))
-    
+    # 1. Base Ignore Spec (Safety + CLI)
+    default_ignore_patterns = list(SAFETY_IGNORES)
     if exclude:
-        all_ignore_patterns.extend(exclude.split(','))
-
-    spec = pathspec.PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, all_ignore_patterns)
-
-    all_paths = list(project_root.rglob("*"))
+        default_ignore_patterns.extend(exclude.split(','))
     
-    # Calculate the absolute path of the output file to prevent self-inclusion
+    root_spec = pathspec.PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, default_ignore_patterns)
+
     try:
         output_path = (project_root / output).resolve()
     except OSError:
@@ -124,35 +108,104 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
     included_files_data = []
     allowed_extensions = {f".{ext.strip('.')}" for ext in include_ext.split(',')} if include_ext else None
 
-    for path in all_paths:
-        if not path.is_file():
-            continue
+    # Map: Path -> List of (root, spec)
+    spec_map = { project_root: [] }
 
-        # Prevent the output file from being included in the list
-        if output_path and path.resolve() == output_path:
-            continue
-        
-        try:
-            relative_path = path.relative_to(project_root)
-        except ValueError:
-            continue
+    # Stats
+    stats_ignored = 0
+    stats_total_size = 0
 
-        relative_path_str = str(relative_path.as_posix())
+    # Walk the tree
+    for dirpath, dirnames, filenames in os.walk(project_root, topdown=True):
+        current_dir = Path(dirpath)
         
-        if spec.match_file(relative_path_str) or is_likely_binary(path):
-            continue
-        if allowed_extensions and path.suffix not in allowed_extensions:
-            continue
+        # 1. Get inherited chain
+        if current_dir == project_root:
+            current_chain = []
+        else:
+            current_chain = spec_map.get(current_dir, [])
+
+        # 2. Check for local .gitignore
+        my_chain = list(current_chain)
+        if not no_gitignore:
+            gitignore_path = current_dir / ".gitignore"
+            if gitignore_path.exists():
+                try:
+                    with gitignore_path.open("r", encoding='utf-8') as f:
+                        lines = f.read().splitlines()
+                        new_spec = pathspec.PathSpec.from_lines(
+                            pathspec.patterns.GitWildMatchPattern, lines
+                        )
+                        my_chain.append((current_dir, new_spec))
+                except Exception:
+                    pass
+        
+        # 3. Propagate chain
+        for d in dirnames:
+            spec_map[current_dir / d] = my_chain
+
+        # Helper
+        def is_ignored(name, is_dir=False):
+            full_path = current_dir / name
+            try:
+                rel_to_project = full_path.relative_to(project_root).as_posix()
+            except ValueError:
+                return False
+
+            # Global Check
+            if root_spec.match_file(rel_to_project):
+                return True
             
-        try:
-            size = path.stat().st_size
-            included_files_data.append({
-                'path': path,
-                'relative_path': relative_path,
-                'formatted_size': format_bytes(size)
-            })
-        except OSError:
-            continue
+            # Chain Check
+            for (spec_root, spec) in my_chain:
+                try:
+                    rel_to_spec = full_path.relative_to(spec_root).as_posix()
+                    if spec.match_file(rel_to_spec):
+                        return True
+                    if is_dir and spec.match_file(rel_to_spec + "/"):
+                        return True
+                except ValueError:
+                    continue
+            return False
+
+        # 4. Prune directories
+        i = 0
+        while i < len(dirnames):
+            if is_ignored(dirnames[i], is_dir=True):
+                del dirnames[i]
+                stats_ignored += 1
+            else:
+                i += 1
+        
+        # 5. Process Files
+        for fname in filenames:
+            f_path = current_dir / fname
+            
+            if output_path and f_path.resolve() == output_path:
+                continue
+
+            if is_ignored(fname):
+                stats_ignored += 1
+                continue
+
+            if is_likely_binary(f_path):
+                stats_ignored += 1
+                continue
+            
+            if allowed_extensions and f_path.suffix not in allowed_extensions:
+                stats_ignored += 1
+                continue
+
+            try:
+                size = f_path.stat().st_size
+                stats_total_size += size
+                included_files_data.append({
+                    'path': f_path,
+                    'relative_path': f_path.relative_to(project_root),
+                    'formatted_size': format_bytes(size)
+                })
+            except OSError:
+                continue
 
     if not included_files_data:
         click.echo("❌ No files to include. Check your path or filters.", err=True)
@@ -164,20 +217,27 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
         click.echo("\n📋 Files to be included (Dry Run):\n")
         tree = generate_file_tree(included_files_data, project_root)
         click.echo(tree)
-        click.echo(f"\nTotal: {len(included_files_data)} files.")
+        
+        click.echo(f"\n📊 Summary (Dry Run):")
+        click.echo(f"   • Included: {len(included_files_data)} files ({format_bytes(stats_total_size)})")
+        click.echo(f"   • Ignored:  {stats_ignored} files/dirs")
         return
 
+    total_lines = 0
     try:
         with open(output, "w", encoding="utf-8", errors='replace') as outfile:
             if not no_header:
                 system_prompt = LLMS_TXT_SYSTEM_PROMPT if llms_txt else DEFAULT_SYSTEM_PROMPT
                 outfile.write(system_prompt + "\n")
+                total_lines += system_prompt.count('\n') + 1
+
                 outfile.write("## Project File Tree\n\n")
                 outfile.write("```\n")
                 tree = generate_file_tree(included_files_data, project_root)
                 outfile.write(tree + "\n")
                 outfile.write("```\n\n")
                 outfile.write("---\n\n");
+                total_lines += tree.count('\n') + 6
 
             for item in included_files_data:
                 relative_path = item['relative_path'].as_posix()
@@ -186,10 +246,17 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
                 try:
                     content = item['path'].read_text(encoding="utf-8")
                     outfile.write(content)
+                    total_lines += content.count('\n') + 1
                 except Exception as e:
                     outfile.write(f"... (error reading file: {e}) ...")
                 outfile.write("\n```\n\n")
-        click.echo(f"\n✅ Success! Combined {len(included_files_data)} files into '{output}'.")
+                total_lines += 4
+        
+        click.echo(f"\n📊 Summary:")
+        click.echo(f"   • Included: {len(included_files_data)} files ({format_bytes(stats_total_size)})")
+        click.echo(f"   • Ignored:  {stats_ignored} files/dirs")
+        click.echo(f"   • Output:   {output} (~{total_lines} lines)")
+        click.echo(f"\n✅ Done!")
     except IOError as e:
         click.echo(f"\n❌ Error writing to output file: {e}", err=True)
         sys.exit(1)

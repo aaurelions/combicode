@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.5.4](https://github.com/aaurelions/combicode/compare/combicode-py-v1.5.3...combicode-py-v1.5.4) (2025-12-03)
+
+### Features
+
+- **ignore:** implement full support for nested `.gitignore` files, ensuring exclusion rules are applied correctly within subdirectories
+
+### Bug Fixes
+
+- **walker:** refactor directory traversal to accurately respect hierarchical ignore patterns
+
 ## [1.5.3](https://github.com/aaurelions/combicode/compare/combicode-py-v1.5.2...combicode-py-v1.5.3) (2025-11-30)
 
 ### Bug Fixes

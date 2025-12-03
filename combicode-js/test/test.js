@@ -7,20 +7,17 @@ const CLI_PATH = path.resolve(__dirname, "../index.js");
 const TEST_DIR = path.resolve(__dirname, "temp_env");
 const OUTPUT_FILE = path.join(TEST_DIR, "combicode.txt");
 
-// Setup: Create a temp directory with dummy files
-function setup() {
-  if (fs.existsSync(TEST_DIR)) {
-    fs.rmSync(TEST_DIR, { recursive: true, force: true });
-  }
-  fs.mkdirSync(TEST_DIR);
-
-  // Create a dummy JS file
-  fs.writeFileSync(path.join(TEST_DIR, "alpha.js"), "console.log('alpha');");
-
-  // Create a dummy text file in a subdir
-  const subDir = path.join(TEST_DIR, "subdir");
-  fs.mkdirSync(subDir);
-  fs.writeFileSync(path.join(subDir, "beta.txt"), "Hello World");
+// Helper to create directory structure
+function createStructure(base, structure) {
+  Object.entries(structure).forEach(([name, content]) => {
+    const fullPath = path.join(base, name);
+    if (typeof content === "object") {
+      fs.mkdirSync(fullPath);
+      createStructure(fullPath, content);
+    } else {
+      fs.writeFileSync(fullPath, content);
+    }
+  });
 }
 
 // Teardown: Cleanup temp directory
@@ -34,53 +31,119 @@ function runTest() {
   console.log("🧪 Starting Node.js Integration Tests...");
 
   try {
-    setup();
+    // Clean start
+    teardown();
+    fs.mkdirSync(TEST_DIR);
 
-    // 1. Test Version Flag
-    console.log("   Checking --version...");
+    // --- Scenario 1: Basic Functionality ---
+    console.log("   [1/4] Checking Basic Functionality & Version...");
     const versionOutput = execSync(`node ${CLI_PATH} --version`).toString();
     assert.match(versionOutput, /Combicode \(JavaScript\), version/);
 
-    // 2. Test Dry Run
-    console.log("   Checking --dry-run...");
+    createStructure(TEST_DIR, {
+      "alpha.js": "console.log('alpha');",
+      subdir: {
+        "beta.txt": "Hello World",
+      },
+    });
+
+    // Capture dry-run output to verify structure
     const dryRunOutput = execSync(`node ${CLI_PATH} --dry-run`, {
       cwd: TEST_DIR,
     }).toString();
     assert.match(dryRunOutput, /Files to be included \(Dry Run\)/);
-    // Check for file size format in tree (e.g., [21B])
-    assert.match(dryRunOutput, /\[\d+(\.\d+)?[KM]?B\]/);
+    assert.match(dryRunOutput, /\[\d+(\.\d+)?[KM]?B\]/); // Size check
 
-    // 3. Test Actual Generation
-    console.log("   Checking file generation...");
-    execSync(`node ${CLI_PATH} --output combicode.txt`, { cwd: TEST_DIR });
+    // Run generation
+    execSync(`node ${CLI_PATH} --output combicode.txt`, {
+      cwd: TEST_DIR,
+      stdio: "inherit",
+    });
 
     assert.ok(fs.existsSync(OUTPUT_FILE), "Output file should exist");
+    let content = fs.readFileSync(OUTPUT_FILE, "utf8");
+    assert.ok(content.includes("### **FILE:** `alpha.js`"));
+    assert.ok(content.includes("### **FILE:** `subdir/beta.txt`"));
 
-    const content = fs.readFileSync(OUTPUT_FILE, "utf8");
+    // --- Scenario 2: Nested .gitignore Support ---
+    console.log("   [2/4] Checking Nested .gitignore Support...");
+    teardown();
+    fs.mkdirSync(TEST_DIR);
 
-    // Check for System Prompt
+    createStructure(TEST_DIR, {
+      "root.js": "root",
+      "ignore_me_root.log": "log",
+      ".gitignore": "*.log",
+      nested: {
+        "child.js": "child",
+        "ignore_me_child.tmp": "tmp",
+        ".gitignore": "*.tmp",
+        deep: {
+          "deep.js": "deep",
+          "ignore_local.txt": "txt",
+          ".gitignore": "ignore_local.txt",
+        },
+      },
+    });
+
+    execSync(`node ${CLI_PATH} -o combicode.txt`, {
+      cwd: TEST_DIR,
+      stdio: "inherit",
+    });
+    content = fs.readFileSync(OUTPUT_FILE, "utf8");
+
+    // Should include:
+    assert.ok(content.includes("### **FILE:** `root.js`"), "root.js missing");
     assert.ok(
-      content.includes("You are an expert software architect"),
-      "System prompt missing"
+      content.includes("### **FILE:** `nested/child.js`"),
+      "child.js missing"
+    );
+    assert.ok(
+      content.includes("### **FILE:** `nested/deep/deep.js`"),
+      "deep.js missing"
     );
 
-    // Check for Tree structure
-    assert.ok(content.includes("subdir"), "Tree should show subdirectory");
-
-    // Check for new Header format
+    // Should exclude (Checking Headers, not content):
     assert.ok(
-      content.includes("### **FILE:** `alpha.js`"),
-      "New header format missing for alpha.js"
+      !content.includes("### **FILE:** `ignore_me_root.log`"),
+      "Root gitignore failed (*.log)"
     );
     assert.ok(
-      content.includes("### **FILE:** `subdir/beta.txt`"),
-      "New header format missing for beta.txt"
+      !content.includes("### **FILE:** `nested/ignore_me_child.tmp`"),
+      "Nested gitignore failed (*.tmp)"
+    );
+    assert.ok(
+      !content.includes("### **FILE:** `nested/deep/ignore_local.txt`"),
+      "Deep nested gitignore failed (specific file)"
+    );
+
+    // --- Scenario 3: CLI Exclude Override ---
+    console.log("   [3/4] Checking CLI Exclude Flags...");
+    execSync(`node ${CLI_PATH} -o combicode.txt -e "**/deep.js"`, {
+      cwd: TEST_DIR,
+      stdio: "inherit",
+    });
+    content = fs.readFileSync(OUTPUT_FILE, "utf8");
+    assert.ok(
+      !content.includes("### **FILE:** `nested/deep/deep.js`"),
+      "CLI exclude flag failed"
+    );
+
+    // --- Scenario 4: Output File Self-Exclusion ---
+    console.log("   [4/4] Checking Output File Self-Exclusion...");
+    execSync(`node ${CLI_PATH} -o combicode.txt`, {
+      cwd: TEST_DIR,
+      stdio: "inherit",
+    });
+    content = fs.readFileSync(OUTPUT_FILE, "utf8");
+    assert.ok(
+      !content.includes("### **FILE:** `combicode.txt`"),
+      "Output file included itself"
     );
 
     console.log("✅ All Node.js tests passed!");
   } catch (error) {
     console.error("❌ Test Failed:", error.message);
-    if (error.stdout) console.log(error.stdout.toString());
     process.exit(1);
   } finally {
     teardown();

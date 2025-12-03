@@ -1,49 +1,51 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
-*.egg
-
-# Virtual environments
-venv/
-env/
-ENV/
-.env/
-.venv/
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IDEs and editors
-.vscode/
-.idea/
-*.sublime-*
-
-# macOS
-.DS_Store
-
-# Logs
-*.log 
-
-tmp_path
-config
-
+node_modules
+.git
+.vscode
+.idea
+*.log
+.env
+*.lock
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.egg-info
+build
+dist
 .pytest_cache
+.npm
+pnpm-lock.yaml
+package-lock.json
+.next
+.DS_Store
+Thumbs.db
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.svg
+*.webp
+*.mp3
+*.wav
+*.flac
+*.mp4
+*.mov
+*.avi
+*.zip
+*.tar.gz
+*.rar
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.dll
+*.exe
+*.so
+*.a
+*.lib
+*.o
+*.bin
+*.iso

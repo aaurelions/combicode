@@ -16,6 +16,7 @@ The generated file starts with a system prompt and a file tree overview, priming
 - **Intelligent Priming:** Starts the output with a system prompt and a file tree, directing the LLM to analyze the entire codebase before responding.
 - **Intelligent Ignoring:** Automatically skips `node_modules`, `.venv`, `dist`, `.git`, binary files, and other common junk.
 - **`.gitignore` Aware:** Respects your project's existing `.gitignore` rules out of the box.
+- **Nested Ignore Support:** Correctly handles `.gitignore` files located in subdirectories, ensuring local exclusion rules are respected.
 - **Zero-Install Usage:** Run it directly with `npx` or `pipx` without polluting your environment.
 - **Customizable:** Easily filter by file extension or add custom ignore patterns.
 
