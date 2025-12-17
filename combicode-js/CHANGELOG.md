@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.7.1](https://github.com/aaurelions/combicode/compare/combicode-js-v1.7.0...combicode-js-v1.7.1) (2025-01-XX)
+
+### Bug Fixes
+
+- **ci:** restore NPM_TOKEN for npm publishing to fix authentication issues
+
 ## [1.7.0](https://github.com/aaurelions/combicode/compare/combicode-js-v1.6.0...combicode-js-v1.7.0) (2025-01-XX)
 
 ### Maintenance
