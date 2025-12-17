@@ -108,3 +108,53 @@ def test_self_exclusion():
             content = f.read()
             assert "### **FILE:** `alpha.py`" in content
             assert "### **FILE:** `combicode.txt`" not in content
+
+def test_skip_content():
+    """Test --skip-content feature: files appear in tree but content is omitted."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("main.py").write_text("print('main')", encoding='utf-8')
+        Path("test.py").write_text("def test(): pass", encoding='utf-8')
+        Path("large.test.ts").write_text("const data = " + "x" * 1000 + ";", encoding='utf-8')
+        
+        Path("subdir").mkdir()
+        Path("subdir/spec.ts").write_text("describe('spec', () => {});", encoding='utf-8')
+        Path("subdir/utils.py").write_text("def util(): pass", encoding='utf-8')
+        
+        result = runner.invoke(cli, ["-o", "combicode.txt", "--skip-content", "**/*test.ts,**/*spec.ts"])
+        
+        assert result.exit_code == 0
+        
+        with open("combicode.txt", "r", encoding="utf-8") as f:
+            content = f.read()
+            
+            # Files should appear in tree with (content omitted) marker
+            assert "large.test.ts (content omitted)" in content
+            assert "spec.ts (content omitted)" in content
+            
+            # Files should have FILE headers
+            assert "### **FILE:** `large.test.ts`" in content
+            assert "### **FILE:** `subdir/spec.ts`" in content
+            
+            # Content should be omitted (placeholder instead)
+            import re
+            large_test_match = re.search(r'### \*\*FILE:\*\* `large\.test\.ts`[\s\S]*?```([\s\S]*?)```', content)
+            assert large_test_match, "Should find large.test.ts content section"
+            assert "Content omitted" in large_test_match.group(1)
+            assert "file size:" in large_test_match.group(1)
+            
+            # Regular files should have full content
+            assert "print('main')" in content
+            assert "def util(): pass" in content
+
+def test_skip_content_dry_run():
+    """Test that dry-run shows content omitted count."""
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("test.ts").write_text("test", encoding='utf-8')
+        Path("main.py").write_text("main", encoding='utf-8')
+        
+        result = runner.invoke(cli, ["--dry-run", "--skip-content", "**/*test.ts"])
+        
+        assert result.exit_code == 0
+        assert "Content omitted:" in result.output

@@ -42,9 +42,12 @@ def format_bytes(size: int) -> str:
     s = round(size / p, 1)
     return f"{s}{size_name[i]}"
 
-def generate_file_tree(files_data: list[dict], root: Path) -> str:
+def generate_file_tree(files_data: list[dict], root: Path, skip_content_set: set = None) -> str:
     tree_lines = [f"{root.name}/"]
     structure = {}
+    
+    if skip_content_set is None:
+        skip_content_set = set()
     
     # Build structure
     for item in files_data:
@@ -53,7 +56,12 @@ def generate_file_tree(files_data: list[dict], root: Path) -> str:
         for i, part in enumerate(path_parts):
             is_file = (i == len(path_parts) - 1)
             if is_file:
-                current_level[part] = item['formatted_size']
+                rel_path_str = str(item['relative_path'].as_posix())
+                should_skip = rel_path_str in skip_content_set
+                current_level[part] = {
+                    'size': item['formatted_size'],
+                    'skip_content': should_skip
+                }
             else:
                 current_level = current_level.setdefault(part, {})
 
@@ -65,8 +73,9 @@ def generate_file_tree(files_data: list[dict], root: Path) -> str:
             
             value = level[entry]
             
-            if isinstance(value, str):
-                tree_lines.append(f"{prefix}{connector}[{value}] {entry}")
+            if isinstance(value, dict) and 'size' in value:
+                marker = " (content omitted)" if value['skip_content'] else ""
+                tree_lines.append(f"{prefix}{connector}[{value['size']}] {entry}{marker}")
             else:
                 tree_lines.append(f"{prefix}{connector}{entry}")
                 if value:
@@ -85,8 +94,9 @@ def generate_file_tree(files_data: list[dict], root: Path) -> str:
 @click.option("-l", "--llms-txt", is_flag=True, help="Use the system prompt for llms.txt context.")
 @click.option("--no-gitignore", is_flag=True, help="Do not use patterns from the project's .gitignore file.")
 @click.option("--no-header", is_flag=True, help="Omit the introductory prompt and file tree from the output.")
+@click.option("--skip-content", help="Comma-separated glob patterns for files to include in tree but omit content.")
 @click.version_option(metadata.version("combicode"), '-v', '--version', prog_name="Combicode", message="%(prog)s (Python), version %(version)s")
-def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header):
+def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header, skip_content):
     """Combicode combines your project's code into a single file for LLM context."""
     
     project_root = Path.cwd().resolve()
@@ -99,6 +109,12 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
         default_ignore_patterns.extend(exclude.split(','))
     
     root_spec = pathspec.PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, default_ignore_patterns)
+    
+    # 2. Skip Content Spec
+    skip_content_spec = None
+    if skip_content:
+        skip_content_patterns = skip_content.split(',')
+        skip_content_spec = pathspec.PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, skip_content_patterns)
 
     try:
         output_path = (project_root / output).resolve()
@@ -212,14 +228,24 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
         sys.exit(1)
 
     included_files_data.sort(key=lambda x: x['path'])
+    
+    # Determine which files should have content skipped
+    skip_content_set = set()
+    if skip_content_spec:
+        for item in included_files_data:
+            rel_path_str = item['relative_path'].as_posix()
+            if skip_content_spec.match_file(rel_path_str):
+                skip_content_set.add(rel_path_str)
 
     if dry_run:
         click.echo("\n📋 Files to be included (Dry Run):\n")
-        tree = generate_file_tree(included_files_data, project_root)
+        tree = generate_file_tree(included_files_data, project_root, skip_content_set)
         click.echo(tree)
         
         click.echo(f"\n📊 Summary (Dry Run):")
         click.echo(f"   • Included: {len(included_files_data)} files ({format_bytes(stats_total_size)})")
+        if skip_content_set:
+            click.echo(f"   • Content omitted: {len(skip_content_set)} files")
         click.echo(f"   • Ignored:  {stats_ignored} files/dirs")
         return
 
@@ -233,7 +259,7 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
 
                 outfile.write("## Project File Tree\n\n")
                 outfile.write("```\n")
-                tree = generate_file_tree(included_files_data, project_root)
+                tree = generate_file_tree(included_files_data, project_root, skip_content_set)
                 outfile.write(tree + "\n")
                 outfile.write("```\n\n")
                 outfile.write("---\n\n");
@@ -241,19 +267,27 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
 
             for item in included_files_data:
                 relative_path = item['relative_path'].as_posix()
+                should_skip_content = relative_path in skip_content_set
+                
                 outfile.write(f"### **FILE:** `{relative_path}`\n")
                 outfile.write("```\n")
-                try:
-                    content = item['path'].read_text(encoding="utf-8")
-                    outfile.write(content)
-                    total_lines += content.count('\n') + 1
-                except Exception as e:
-                    outfile.write(f"... (error reading file: {e}) ...")
+                if should_skip_content:
+                    outfile.write(f"(Content omitted - file size: {item['formatted_size']})\n")
+                    total_lines += 1
+                else:
+                    try:
+                        content = item['path'].read_text(encoding="utf-8")
+                        outfile.write(content)
+                        total_lines += content.count('\n') + 1
+                    except Exception as e:
+                        outfile.write(f"... (error reading file: {e}) ...")
                 outfile.write("\n```\n\n")
                 total_lines += 4
         
         click.echo(f"\n📊 Summary:")
         click.echo(f"   • Included: {len(included_files_data)} files ({format_bytes(stats_total_size)})")
+        if skip_content_set:
+            click.echo(f"   • Content omitted: {len(skip_content_set)} files")
         click.echo(f"   • Ignored:  {stats_ignored} files/dirs")
         click.echo(f"   • Output:   {output} (~{total_lines} lines)")
         click.echo(f"\n✅ Done!")

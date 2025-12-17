@@ -141,6 +141,64 @@ function runTest() {
       "Output file included itself"
     );
 
+    // --- Scenario 5: Skip Content Feature ---
+    console.log("   [5/5] Checking Skip Content Feature...");
+    teardown();
+    fs.mkdirSync(TEST_DIR);
+
+    createStructure(TEST_DIR, {
+      "main.js": "console.log('main');",
+      "test.js": "describe('test', () => { it('works', () => {}); });",
+      "large.test.ts": "const data = " + '"x'.repeat(1000) + '";',
+      subdir: {
+        "spec.ts": "describe('spec', () => {});",
+        "utils.js": "export function util() {}",
+      },
+    });
+
+    execSync(`node ${CLI_PATH} -o combicode.txt --skip-content "**/*test.ts,**/*spec.ts"`, {
+      cwd: TEST_DIR,
+      stdio: "inherit",
+    });
+    content = fs.readFileSync(OUTPUT_FILE, "utf8");
+
+    // Files should appear in tree with (content omitted) marker
+    assert.ok(
+      content.includes("large.test.ts (content omitted)"),
+      "Tree should show (content omitted) marker for large.test.ts"
+    );
+    // Check for spec.ts - it might be in subdir/spec.ts path
+    assert.ok(
+      content.includes("spec.ts (content omitted)") || content.includes("subdir/spec.ts (content omitted)"),
+      "Tree should show (content omitted) marker for spec.ts"
+    );
+
+    // Files should have FILE headers
+    assert.ok(content.includes("### **FILE:** `large.test.ts`"), "File header should exist");
+    assert.ok(content.includes("### **FILE:** `subdir/spec.ts`"), "File header should exist");
+
+    // Content should be omitted (placeholder instead)
+    const largeTestMatch = content.match(/### \*\*FILE:\*\* `large\.test\.ts`[\s\S]*?```([\s\S]*?)```/);
+    assert.ok(largeTestMatch, "Should find large.test.ts content section");
+    assert.ok(
+      largeTestMatch[1].includes("Content omitted"),
+      "Content should be replaced with placeholder"
+    );
+    assert.ok(
+      largeTestMatch[1].includes("file size:"),
+      "Placeholder should include file size"
+    );
+
+    // Regular files should have full content
+    assert.ok(content.includes("console.log('main');"), "main.js should have full content");
+    assert.ok(content.includes("export function util() {}"), "utils.js should have full content");
+
+    // Dry run should show content omitted count
+    const skipContentDryRunOutput = execSync(`node ${CLI_PATH} --dry-run --skip-content "**/*.test.ts"`, {
+      cwd: TEST_DIR,
+    }).toString();
+    assert.match(skipContentDryRunOutput, /Content omitted:/, "Dry run should show content omitted count");
+
     console.log("✅ All Node.js tests passed!");
   } catch (error) {
     console.error("❌ Test Failed:", error.message);

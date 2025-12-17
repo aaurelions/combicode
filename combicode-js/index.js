@@ -169,7 +169,7 @@ function walkDirectory(
   return results;
 }
 
-function generateFileTree(filesWithSize, root) {
+function generateFileTree(filesWithSize, root, skipContentSet = null) {
   let tree = `${path.basename(root)}/\n`;
   const structure = {};
 
@@ -179,7 +179,8 @@ function generateFileTree(filesWithSize, root) {
     parts.forEach((part, index) => {
       const isFile = index === parts.length - 1;
       if (isFile) {
-        currentLevel[part] = formattedSize;
+        const shouldSkipContent = skipContentSet && skipContentSet.has(relativePath);
+        currentLevel[part] = { size: formattedSize, skipContent: shouldSkipContent };
       } else {
         if (!currentLevel[part]) {
           currentLevel[part] = {};
@@ -194,11 +195,12 @@ function generateFileTree(filesWithSize, root) {
     entries.forEach((entry, index) => {
       const isLast = index === entries.length - 1;
       const value = level[entry];
-      const isFile = typeof value === "string";
+      const isFile = typeof value === "object" && value.size !== undefined;
       const connector = isLast ? "└── " : "├── ";
 
       if (isFile) {
-        tree += `${prefix}${connector}[${value}] ${entry}\n`;
+        const marker = value.skipContent ? " (content omitted)" : "";
+        tree += `${prefix}${connector}[${value.size}] ${entry}${marker}\n`;
       } else {
         tree += `${prefix}${connector}${entry}\n`;
         buildTree(value, `${prefix}${isLast ? "    " : "│   "}`);
@@ -258,6 +260,10 @@ async function main() {
       type: "boolean",
       default: false,
     })
+    .option("skip-content", {
+      describe: "Comma-separated glob patterns for files to include in tree but omit content",
+      type: "string",
+    })
     .version(version)
     .alias("v", "version")
     .help()
@@ -275,6 +281,12 @@ async function main() {
 
   if (argv.exclude) {
     rootIgnoreManager.add(argv.exclude.split(","));
+  }
+
+  // Create skip-content manager
+  const skipContentManager = ignore();
+  if (argv.skipContent) {
+    skipContentManager.add(argv.skipContent.split(","));
   }
 
   const absoluteOutputPath = path.resolve(projectRoot, argv.output);
@@ -306,6 +318,17 @@ async function main() {
 
   includedFiles.sort((a, b) => a.path.localeCompare(b.path));
 
+  // Determine which files should have content skipped
+  const skipContentSet = new Set();
+  if (argv.skipContent) {
+    includedFiles.forEach((file) => {
+      const relativePath = file.relativePath.replace(/\\/g, "/");
+      if (skipContentManager.ignores(relativePath)) {
+        skipContentSet.add(file.relativePath);
+      }
+    });
+  }
+
   // Calculate total size of included files
   const totalSizeBytes = includedFiles.reduce(
     (acc, file) => acc + file.size,
@@ -321,7 +344,7 @@ async function main() {
 
   if (argv.dryRun) {
     console.log("\n📋 Files to be included (Dry Run):\n");
-    const tree = generateFileTree(includedFiles, projectRoot);
+    const tree = generateFileTree(includedFiles, projectRoot, skipContentSet);
     console.log(tree);
     console.log("\n📊 Summary (Dry Run):");
     console.log(
@@ -329,6 +352,9 @@ async function main() {
         totalSizeBytes
       )})`
     );
+    if (skipContentSet.size > 0) {
+      console.log(`   • Content omitted: ${skipContentSet.size} files`);
+    }
     console.log(`   • Ignored:  ${stats.ignored} files/dirs`);
     return;
   }
@@ -345,7 +371,7 @@ async function main() {
 
     outputStream.write("## Project File Tree\n\n");
     outputStream.write("```\n");
-    const tree = generateFileTree(includedFiles, projectRoot);
+    const tree = generateFileTree(includedFiles, projectRoot, skipContentSet);
     outputStream.write(tree);
     outputStream.write("```\n\n");
     outputStream.write("---\n\n");
@@ -355,14 +381,21 @@ async function main() {
 
   for (const fileObj of includedFiles) {
     const relativePath = fileObj.relativePath.replace(/\\/g, "/");
+    const shouldSkipContent = skipContentSet.has(fileObj.relativePath);
+    
     outputStream.write(`### **FILE:** \`${relativePath}\`\n`);
     outputStream.write("```\n");
-    try {
-      const content = fs.readFileSync(fileObj.path, "utf8");
-      outputStream.write(content);
-      totalLines += content.split("\n").length;
-    } catch (e) {
-      outputStream.write(`... (error reading file: ${e.message}) ...`);
+    if (shouldSkipContent) {
+      outputStream.write(`(Content omitted - file size: ${fileObj.formattedSize})\n`);
+      totalLines += 1;
+    } else {
+      try {
+        const content = fs.readFileSync(fileObj.path, "utf8");
+        outputStream.write(content);
+        totalLines += content.split("\n").length;
+      } catch (e) {
+        outputStream.write(`... (error reading file: ${e.message}) ...`);
+      }
     }
     outputStream.write("\n```\n\n");
     totalLines += 4; // Headers/footers lines
@@ -375,6 +408,9 @@ async function main() {
       totalSizeBytes
     )})`
   );
+  if (skipContentSet.size > 0) {
+    console.log(`   • Content omitted: ${skipContentSet.size} files`);
+  }
   console.log(`   • Ignored:  ${stats.ignored} files/dirs`);
   console.log(`   • Output:   ${argv.output} (~${totalLines} lines)`);
   console.log(`\n✅ Done!`);

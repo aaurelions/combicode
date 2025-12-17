@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.6.0](https://github.com/aaurelions/combicode/compare/combicode-py-v1.5.4...combicode-py-v1.6.0) (2025-01-XX)
+
+### Features
+
+- **skip-content:** add `--skip-content` option to include files in tree but omit their content (useful for large test files)
+
 ## [1.5.4](https://github.com/aaurelions/combicode/compare/combicode-py-v1.5.3...combicode-py-v1.5.4) (2025-12-03)
 
 ### Features

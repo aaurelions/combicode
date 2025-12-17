@@ -81,6 +81,20 @@ Use the `--exclude` or `-e` flag with comma-separated glob patterns.
 npx combicode -e "**/*_test.py,docs/**"
 ```
 
+### Skip content for specific files
+
+Use the `--skip-content` flag to include files in the tree structure but omit their content. This is useful for large files (like test files) that you want visible in the project overview but don't need their full content.
+
+```bash
+# Include .test.ts files in tree but skip their content
+npx combicode --skip-content "**/*.test.ts"
+
+# Skip content for multiple patterns
+npx combicode --skip-content "**/*.test.ts,**/*.spec.ts,**/tests/**"
+```
+
+Files with skipped content will be marked with `(content omitted)` in the file tree and will show a placeholder in the content section.
+
 ### Generating Context for `llms.txt`
 
 The `--llms.txt` or `-l` flag is designed for projects that use an [`llms.txt`](https://llmstxt.org/) file to specify important documentation. When this flag is used, Combicode inserts a specialized system prompt telling the LLM that the provided context is the project's definitive documentation for a specific version. This helps the LLM provide more accurate answers and avoid using deprecated functions.
@@ -98,6 +112,7 @@ npx combicode -l -i .md -o llms.txt
 | `--dry-run`      | `-d`  | Preview files without creating the output file.                                | `false`         |
 | `--include-ext`  | `-i`  | Comma-separated list of extensions to exclusively include.                     | (include all)   |
 | `--exclude`      | `-e`  | Comma-separated list of additional glob patterns to exclude.                   | (none)          |
+| `--skip-content` |       | Comma-separated glob patterns for files to include in tree but omit content.   | (none)          |
 | `--llms-txt`     | `-l`  | Use a specialized system prompt for context generated from an `llms.txt` file. | `false`         |
 | `--no-gitignore` |       | Do not use patterns from the project's `.gitignore` file.                      | `false`         |
 | `--no-header`    |       | Omit the introductory prompt and file tree from the output.                    | `false`         |
