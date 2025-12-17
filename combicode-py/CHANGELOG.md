@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.2](https://github.com/aaurelions/combicode/compare/combicode-py-v1.7.1...combicode-py-v1.7.2) (2025-01-XX)
+
+### Bug Fixes
+
+- **skip-content:** fix total size calculation to exclude files with skipped content
+- **skip-content:** remove extra blank line after placeholder text in output
+
 ## [1.7.1](https://github.com/aaurelions/combicode/compare/combicode-py-v1.7.0...combicode-py-v1.7.1) (2025-01-XX)
 
 ### Bug Fixes

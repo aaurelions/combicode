@@ -218,6 +218,7 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
                 included_files_data.append({
                     'path': f_path,
                     'relative_path': f_path.relative_to(project_root),
+                    'size': size,
                     'formatted_size': format_bytes(size)
                 })
             except OSError:
@@ -236,6 +237,13 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
             rel_path_str = item['relative_path'].as_posix()
             if skip_content_spec.match_file(rel_path_str):
                 skip_content_set.add(rel_path_str)
+    
+    # Recalculate total size excluding files with skipped content
+    stats_total_size = sum(
+        item['size']
+        for item in included_files_data
+        if item['relative_path'].as_posix() not in skip_content_set
+    )
 
     if dry_run:
         click.echo("\n📋 Files to be included (Dry Run):\n")
@@ -272,7 +280,7 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
                 outfile.write(f"### **FILE:** `{relative_path}`\n")
                 outfile.write("```\n")
                 if should_skip_content:
-                    outfile.write(f"(Content omitted - file size: {item['formatted_size']})\n")
+                    outfile.write(f"(Content omitted - file size: {item['formatted_size']})")
                     total_lines += 1
                 else:
                     try:

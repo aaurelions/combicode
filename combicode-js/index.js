@@ -329,9 +329,15 @@ async function main() {
     });
   }
 
-  // Calculate total size of included files
+  // Calculate total size of included files (excluding files with skipped content)
   const totalSizeBytes = includedFiles.reduce(
-    (acc, file) => acc + file.size,
+    (acc, file) => {
+      // Don't count files with skipped content in the total size
+      if (skipContentSet.has(file.relativePath)) {
+        return acc;
+      }
+      return acc + file.size;
+    },
     0
   );
 
@@ -386,7 +392,7 @@ async function main() {
     outputStream.write(`### **FILE:** \`${relativePath}\`\n`);
     outputStream.write("```\n");
     if (shouldSkipContent) {
-      outputStream.write(`(Content omitted - file size: ${fileObj.formattedSize})\n`);
+      outputStream.write(`(Content omitted - file size: ${fileObj.formattedSize})`);
       totalLines += 1;
     } else {
       try {
