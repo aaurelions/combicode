@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.7.0](https://github.com/aaurelions/combicode/compare/combicode-js-v1.6.0...combicode-js-v1.7.0) (2025-01-XX)
+
+### Maintenance
+
+- **ci:** migrate to npm trusted publishing (OIDC), remove NPM_TOKEN requirement
+
 ## [1.6.0](https://github.com/aaurelions/combicode/compare/combicode-js-v1.5.4...combicode-js-v1.6.0) (2025-01-XX)
 
 ### Features
