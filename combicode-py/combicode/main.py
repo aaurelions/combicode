@@ -278,7 +278,7 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
                 should_skip_content = relative_path in skip_content_set
                 
                 outfile.write(f"### **FILE:** `{relative_path}`\n")
-                outfile.write("```\n")
+                outfile.write("````\n")
                 if should_skip_content:
                     outfile.write(f"(Content omitted - file size: {item['formatted_size']})")
                     total_lines += 1
@@ -289,7 +289,7 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
                         total_lines += content.count('\n') + 1
                     except Exception as e:
                         outfile.write(f"... (error reading file: {e}) ...")
-                outfile.write("\n```\n\n")
+                outfile.write("\n````\n\n")
                 total_lines += 4
         
         click.echo(f"\n📊 Summary:")

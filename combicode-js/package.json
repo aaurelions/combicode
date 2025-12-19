@@ -1,6 +1,6 @@
 {
   "name": "combicode",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "A CLI tool to combine a project's codebase into a single file for LLM context.",
   "main": "index.js",
   "bin": {

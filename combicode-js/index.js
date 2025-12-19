@@ -179,8 +179,12 @@ function generateFileTree(filesWithSize, root, skipContentSet = null) {
     parts.forEach((part, index) => {
       const isFile = index === parts.length - 1;
       if (isFile) {
-        const shouldSkipContent = skipContentSet && skipContentSet.has(relativePath);
-        currentLevel[part] = { size: formattedSize, skipContent: shouldSkipContent };
+        const shouldSkipContent =
+          skipContentSet && skipContentSet.has(relativePath);
+        currentLevel[part] = {
+          size: formattedSize,
+          skipContent: shouldSkipContent,
+        };
       } else {
         if (!currentLevel[part]) {
           currentLevel[part] = {};
@@ -261,7 +265,8 @@ async function main() {
       default: false,
     })
     .option("skip-content", {
-      describe: "Comma-separated glob patterns for files to include in tree but omit content",
+      describe:
+        "Comma-separated glob patterns for files to include in tree but omit content",
       type: "string",
     })
     .version(version)
@@ -330,16 +335,13 @@ async function main() {
   }
 
   // Calculate total size of included files (excluding files with skipped content)
-  const totalSizeBytes = includedFiles.reduce(
-    (acc, file) => {
-      // Don't count files with skipped content in the total size
-      if (skipContentSet.has(file.relativePath)) {
-        return acc;
-      }
-      return acc + file.size;
-    },
-    0
-  );
+  const totalSizeBytes = includedFiles.reduce((acc, file) => {
+    // Don't count files with skipped content in the total size
+    if (skipContentSet.has(file.relativePath)) {
+      return acc;
+    }
+    return acc + file.size;
+  }, 0);
 
   if (includedFiles.length === 0) {
     console.error(
@@ -388,11 +390,13 @@ async function main() {
   for (const fileObj of includedFiles) {
     const relativePath = fileObj.relativePath.replace(/\\/g, "/");
     const shouldSkipContent = skipContentSet.has(fileObj.relativePath);
-    
+
     outputStream.write(`### **FILE:** \`${relativePath}\`\n`);
-    outputStream.write("```\n");
+    outputStream.write("````\n");
     if (shouldSkipContent) {
-      outputStream.write(`(Content omitted - file size: ${fileObj.formattedSize})`);
+      outputStream.write(
+        `(Content omitted - file size: ${fileObj.formattedSize})`
+      );
       totalLines += 1;
     } else {
       try {
@@ -403,7 +407,7 @@ async function main() {
         outputStream.write(`... (error reading file: ${e.message}) ...`);
       }
     }
-    outputStream.write("\n```\n\n");
+    outputStream.write("\n````\n\n");
     totalLines += 4; // Headers/footers lines
   }
   outputStream.end();
