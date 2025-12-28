@@ -288,6 +288,30 @@ async function main() {
     rootIgnoreManager.add(argv.exclude.split(","));
   }
 
+  const gitModulesPath = path.join(projectRoot, ".gitmodules");
+  if (fs.existsSync(gitModulesPath)) {
+    try {
+      const content = fs.readFileSync(gitModulesPath, "utf8");
+      const lines = content.split(/\r?\n/);
+      const submodulePaths = [];
+
+      for (const line of lines) {
+        // Match lines like: path = libs/my-lib
+        const match = line.match(/^\s*path\s*=\s*(.+?)\s*$/);
+        if (match) {
+          submodulePaths.push(match[1]);
+        }
+      }
+
+      if (submodulePaths.length > 0) {
+        // Add identified submodule paths to the ignore manager
+        rootIgnoreManager.add(submodulePaths);
+      }
+    } catch {
+      // Fail silently if .gitmodules cannot be read
+    }
+  }
+
   // Create skip-content manager
   const skipContentManager = ignore();
   if (argv.skipContent) {

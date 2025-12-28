@@ -107,6 +107,20 @@ def cli(output, dry_run, include_ext, exclude, llms_txt, no_gitignore, no_header
     default_ignore_patterns = list(SAFETY_IGNORES)
     if exclude:
         default_ignore_patterns.extend(exclude.split(','))
+
+    gitmodules_path = project_root / ".gitmodules"
+    if gitmodules_path.exists():
+        try:
+            with gitmodules_path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    # Look for lines like: path = folder/subfolder
+                    stripped = line.strip()
+                    if stripped.startswith("path") and "=" in stripped:
+                        key, value = stripped.split("=", 1)
+                        if key.strip() == "path":
+                            default_ignore_patterns.append(value.strip())
+        except Exception:
+            pass # Fail silently
     
     root_spec = pathspec.PathSpec.from_lines(pathspec.patterns.GitWildMatchPattern, default_ignore_patterns)
     
