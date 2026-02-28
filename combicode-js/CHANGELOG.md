@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.0.0](https://github.com/aaurelions/combicode/compare/combicode-js-v1.7.2...combicode-js-v2.0.0) (2026-02-28)
+
+### Features
+
+- **code-map:** add expanded code map with classes, functions, loops, and constructors parsed from 15+ languages
+- **code-map:** show OL (Original Line), ML (Merged Line), and SIZE references for every element
+- **output:** wrap output in `<code_index>` and `<merged_code>` XML tags for clear section separation
+- **output:** update file headers to `# FILE: path [OL: X-Y | ML: X-Y | SIZE]` format
+- **output:** update system prompts to reference code map and OL/ML navigation
+- **recreate:** add `--recreate` / `-r` flag to extract files from combicode.txt back to project structure
+- **recreate:** add `--input` flag to specify input file for recreate
+- **recreate:** add `--overwrite` flag to overwrite existing files when recreating
+- **parse:** add `--no-parse` flag to disable code structure parsing (show only file tree)
+- **parsers:** regex-based parsers for JavaScript, TypeScript, Go, Rust, Java, C/C++, C#, PHP, Ruby, Swift, Kotlin, Scala, Lua, Perl, Bash
+- **parsers:** Python parser with indent-based block detection
+
+### Breaking Changes
+
+- Output format changed: files are now wrapped in `<code_index>` and `<merged_code>` XML sections
+- File headers changed from `### **FILE:** \`path\`` to `# FILE: path [OL: X-Y | ML: X-Y | SIZE]`
+- System prompts updated to reference code map and line navigation
+
 ## [1.7.2](https://github.com/aaurelions/combicode/compare/combicode-js-v1.7.1...combicode-js-v1.7.2) (2025-01-XX)
 
 ### Bug Fixes

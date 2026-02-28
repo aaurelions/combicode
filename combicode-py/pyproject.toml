@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "combicode"
 dynamic = ["version"]
 authors = [{ name = "A. Aurelions" }]
-description = "A CLI tool to combine a project's codebase into a single file for LLM context."
+description = "A CLI tool to combine a project's codebase into a single file for LLM context with expanded code map."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.8"
