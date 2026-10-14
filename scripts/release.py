@@ -30,6 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REPOSITORY = "https://github.com/aaurelions/combicode"
+NPM_SCOPE = "@aaurelions"
 SUMMARY = "Pack a codebase into one LLM-friendly text file with a code map and exact line references"
 
 
@@ -54,8 +55,13 @@ class Target:
         return f"combicode-{self.triple}.{'zip' if self.windows else 'tar.gz'}"
 
     @property
-    def npm_package(self) -> str:
+    def npm_dir(self) -> str:
         return f"combicode-{self.npm_os}-{self.npm_cpu}"
+
+    @property
+    def npm_package(self) -> str:
+        # Scoped: npm's spam filter rejects new unscoped names that resemble each other.
+        return f"{NPM_SCOPE}/{self.npm_dir}"
 
 
 def _linux_tags(arch: str) -> tuple[str, ...]:
@@ -145,7 +151,7 @@ def cmd_npm(args: argparse.Namespace) -> None:
         shutil.rmtree(args.out)
 
     for target, archive in available(args.dist):
-        package = args.out / target.npm_package
+        package = args.out / target.npm_dir
         (package / "bin").mkdir(parents=True)
         binary = package / "bin" / target.executable
         binary.write_bytes(read_binary(target, archive))

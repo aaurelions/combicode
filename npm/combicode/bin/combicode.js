@@ -6,7 +6,7 @@
 
 const { spawnSync } = require("node:child_process");
 
-const platformPackage = `combicode-${process.platform}-${process.arch}`;
+const platformPackage = `@aaurelions/combicode-${process.platform}-${process.arch}`;
 const executable = process.platform === "win32" ? "combicode.exe" : "combicode";
 
 let binary;

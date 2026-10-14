@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.1](https://github.com/aaurelions/combicode/compare/v4.0.0...v4.0.1) (2026-10-14)
+
+### Fixes
+
+- npm: the platform binaries are published as `@aaurelions/combicode-{linux,darwin,win32}-{x64,arm64}`. npm's spam filter rejected the unscoped `combicode-win32-arm64`, so the 4.0.0 npm release was incomplete and `combicode@4.0.0` was never published to npm.
+
+
 ## [4.0.0](https://github.com/aaurelions/combicode/compare/v3.0.0...v4.0.0) (2026-10-14)
 
 Combicode is now a single Rust binary. The npm and PyPI packages ship that binary, and it is also available from crates.io, Homebrew and GitHub releases.
