@@ -1,0 +1,68 @@
+name: Homebrew
+
+# Writes Formula/combicode.rb to aaurelions/homebrew-tap from the archives of a GitHub
+# release. Called by the release workflow; run it manually to update the tap for an
+# existing release. Needs the secret HOMEBREW_TAP_TOKEN with write access to the tap.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag, e.g. v4.0.1
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, e.g. v4.0.1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  formula:
+    name: Update the Homebrew tap
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - name: Check for the tap token
+        if: env.TAP_TOKEN == ''
+        run: |
+          echo "::error::HOMEBREW_TAP_TOKEN is not set; cannot update aaurelions/homebrew-tap"
+          exit 1
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Check that the tag matches Cargo.toml
+        run: |
+          expected="v$(python scripts/release.py version)"
+          if [ "$TAG" != "$expected" ]; then
+            echo "::error::tag $TAG does not match Cargo.toml version ($expected) of the checked-out ref"
+            exit 1
+          fi
+      - name: Download the release archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist --pattern '*.tar.gz'
+      - name: Commit the formula
+        # git clone (unlike actions/checkout) also works while the tap repository is still
+        # empty; the explicit refspec creates its main branch on the first push.
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/aaurelions/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          python scripts/release.py formula --dist dist > tap/Formula/combicode.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/combicode.rb
+          if git diff --cached --quiet; then
+            echo "Formula/combicode.rb is already up to date"
+            exit 0
+          fi
+          git commit -m "combicode ${TAG#v}"
+          git push origin HEAD:main

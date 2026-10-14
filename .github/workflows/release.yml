@@ -174,39 +174,9 @@ jobs:
           skip-existing: true
 
   homebrew:
-    name: Update the Homebrew tap
+    name: Homebrew
     needs: github-release
-    runs-on: ubuntu-latest
-    env:
-      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-python@v7.0.0
-        with:
-          python-version: "3.13"
-      - uses: actions/download-artifact@v8.0.2
-        with:
-          pattern: dist-*
-          merge-multiple: true
-          path: dist
-      - name: Check for the tap token
-        if: env.TAP_TOKEN == ''
-        run: echo "::warning::HOMEBREW_TAP_TOKEN is not set; skipping the Homebrew tap update"
-      - name: Commit the formula
-        if: env.TAP_TOKEN != ''
-        # git clone (unlike actions/checkout) also works while the tap repository is still
-        # empty; the explicit refspec creates its main branch on the first push.
-        run: |
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/aaurelions/homebrew-tap.git" tap
-          mkdir -p tap/Formula
-          python scripts/release.py formula --dist dist > tap/Formula/combicode.rb
-          cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/combicode.rb
-          if git diff --cached --quiet; then
-            echo "Formula/combicode.rb is already up to date"
-            exit 0
-          fi
-          git commit -m "combicode ${GITHUB_REF_NAME#v}"
-          git push origin HEAD:main
+    uses: ./.github/workflows/homebrew.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
