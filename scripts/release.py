@@ -32,6 +32,8 @@ ROOT = Path(__file__).resolve().parent.parent
 REPOSITORY = "https://github.com/aaurelions/combicode"
 NPM_SCOPE = "@aaurelions"
 SUMMARY = "Pack a codebase into one LLM-friendly text file with a code map and exact line references"
+# Homebrew requires descriptions shorter than 80 characters.
+BREW_DESC = "Pack a codebase into one LLM-friendly file with a code map and line references"
 
 
 @dataclass(frozen=True)
@@ -265,7 +267,7 @@ def cmd_formula(args: argparse.Namespace) -> None:
     )
     print(
         f'''class Combicode < Formula
-  desc "{SUMMARY}"
+  desc "{BREW_DESC}"
   homepage "{REPOSITORY}"
   version "{release}"
   license "MIT"
