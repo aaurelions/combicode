@@ -1,0 +1,20 @@
+{
+  "name": "combicode",
+  "description": "Pack a codebase into one LLM-friendly text file with a code map and exact line references",
+  "keywords": ["cli", "llm", "ai", "context", "prompt", "codebase", "llms.txt"],
+  "homepage": "https://github.com/aaurelions/combicode#readme",
+  "bugs": "https://github.com/aaurelions/combicode/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aaurelions/combicode.git"
+  },
+  "license": "MIT",
+  "author": "A. Aurelions",
+  "bin": {
+    "combicode": "bin/combicode.js"
+  },
+  "files": ["bin/combicode.js"],
+  "engines": {
+    "node": ">=18"
+  }
+}

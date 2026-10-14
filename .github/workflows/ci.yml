@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2.9.2
+      - name: Check formatting
+        if: runner.os == 'Linux'
+        run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+
+  msrv:
+    name: Minimum supported Rust version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Read rust-version from Cargo.toml
+        id: msrv
+        run: echo "version=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+      - uses: Swatinem/rust-cache@v2.9.2
+      - run: cargo check --locked --all-targets
+
+  packages:
+    name: Packages (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2.9.2
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24"
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Build release archive, npm packages and wheel
+        run: |
+          exe=target/${{ matrix.target }}/release/combicode
+          [ "$RUNNER_OS" = Windows ] && exe="$exe.exe"
+          python scripts/release.py archive --target ${{ matrix.target }} --binary "$exe" --out dist
+          python scripts/release.py checksums --dist dist
+          python scripts/release.py npm --dist dist --out dist/npm
+          python scripts/release.py wheels --dist dist --out dist/wheels
+          python scripts/release.py formula --dist dist
+      - name: Install and run the npm package
+        run: |
+          mkdir -p dist/tarballs smoke-npm
+          for package in dist/npm/*/; do npm pack "./$package" --pack-destination dist/tarballs; done
+          cd smoke-npm
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund ../dist/tarballs/*.tgz
+          npx combicode --version
+          npx combicode .. --only-map --no-size -i src/main.rs | grep -F 'main.rs [OL:'
+      - name: Install and run the Python wheel
+        run: |
+          python -m venv smoke-venv
+          bin=smoke-venv/bin
+          [ "$RUNNER_OS" = Windows ] && bin=smoke-venv/Scripts
+          "$bin/python" -m pip install dist/wheels/*.whl
+          "$bin/combicode" --version

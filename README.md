@@ -1,144 +1,215 @@
 # Combicode
 
-[![NPM Version](https://img.shields.io/npm/v/combicode.svg)](https://www.npmjs.com/package/combicode)
-[![PyPI Version](https://img.shields.io/pypi/v/combicode.svg)](https://pypi.org/project/combicode/)
+[![crates.io](https://img.shields.io/crates/v/combicode.svg)](https://crates.io/crates/combicode)
+[![npm](https://img.shields.io/npm/v/combicode.svg)](https://www.npmjs.com/package/combicode)
+[![PyPI](https://img.shields.io/pypi/v/combicode.svg)](https://pypi.org/project/combicode/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Combine a project's UTF-8 source files into one readable context file, with a directory tree and code outline. Restore those files with either the JavaScript or Python CLI.
+Combicode packs a project into one text file that you can give to an LLM. The file contains:
 
-## Quick start
+1. **A prompt** that tells the model what it is reading.
+2. **A code map**: the directory tree plus the classes and functions in each file, with line numbers and sizes.
+3. **The code**: every file, unchanged.
 
-Requires **Node.js 22.12+** or **Python 3.11+**.
+Every line number in the map is exact, so you and the model can jump straight to any file or function.
+
+Combicode is a single native binary written in Rust. The npm and PyPI packages contain the same binary, so you do not need Rust, Node.js or Python beyond the tool you install it with.
+
+## Install
+
+| Tool | Run once | Install |
+| --- | --- | --- |
+| npm | `npx combicode` | `npm install -g combicode` |
+| Python | `uvx combicode` or `pipx run combicode` | `pipx install combicode` or `pip install combicode` |
+| Homebrew | | `brew install aaurelions/tap/combicode` |
+| Cargo | | `cargo install combicode` |
+
+`npx combicode` needs only Node.js 18 or newer: npm downloads the prebuilt binary for your platform (Linux, macOS or Windows on x64 or ARM64) as an optional dependency. On other platforms, or if optional dependencies are disabled (`--omit=optional`), use `cargo install combicode`.
+
+Prebuilt binaries for Linux, macOS and Windows (x64 and ARM64) are attached to every [GitHub release](https://github.com/aaurelions/combicode/releases).
+
+## Usage
+
+Run it in your project directory:
 
 ```sh
-npx combicode
-# or
-pipx run combicode
+combicode                     # saves combicode.txt
 ```
 
-Run from the project root. The default output is `combicode.txt`.
+When you run it in a terminal, Combicode saves `combicode.txt`. When its output is redirected or piped, it writes to stdout instead, so both of these work:
 
 ```sh
-# Preview without writing
-combicode --dry-run
-
-# Include selected file types (case-insensitive)
-combicode -i '.ts, .tsx, .css' -o output/context.txt
-
-# Add exclusions
-combicode -e '**/*.generated.*,fixtures/'
-
-# Keep files in the tree but omit their contents
-combicode --skip-content '**/*.test.ts,**/*.spec.ts'
-
-# Disable code outline parsing
-combicode --no-parse
-
-# Use a documentation-oriented prompt
-combicode --llms-txt -i .md -o documentation.txt
-
-# Restore an archive into a directory
-combicode --recreate --input documentation.txt -o restored
-combicode --recreate --input documentation.txt -o restored --dry-run
-combicode --recreate --input documentation.txt -o restored --overwrite
+combicode > combicode.txt
+combicode | pbcopy            # copy to the clipboard on macOS
 ```
 
-`-i` always means `--include-ext`; use `--input` for restoration. `--llms-txt` changes the introductory prompt only: it does not read links or fetch documentation.
+Status messages go to stderr, so they never end up in the file.
+
+### Choose what goes into the file
+
+```sh
+combicode --no-prompt > no-prompt.txt          # map and code, without the prompt
+combicode --no-prompt --no-code > map.txt      # only the map
+combicode --only-map > map.txt                 # the same, shorter
+combicode --only-map --no-size > map.txt       # the map without sizes
+combicode --no-map -o no-map.txt               # prompt and code, without the map
+combicode --no-outline                         # the map lists files but not functions
+```
+
+### Choose which files to pack
+
+```sh
+combicode --include 'src/,*.md'                # only src/ and Markdown files
+combicode --only-map --include 'hello,world,my.txt' -o combicode.txt
+combicode --exclude '*.test.ts,fixtures/'      # skip more files
+combicode --omit-content 'data/,*.csv'         # list these in the map, but leave out their content
+combicode ../other-project -o other.txt        # pack another directory
+```
+
+Patterns use [gitignore syntax](https://git-scm.com/docs/gitignore#_pattern_format). A pattern without a slash, such as `hello` or `*.md`, matches at any depth, and a directory pattern matches everything inside it. Separate patterns with commas or repeat the option: `-i src/ -i '*.md'`.
+
+## Output
+
+For a small project, `combicode` produces this file (line numbers added for reference):
+
+```text
+ 1  You are given the source code of the project "my-app", packed into a single document by Combicode.
+ 2
+ 3  <code_map> lists every included file as a directory tree, with the classes, functions and other symbols found in each file. Entries show OL (line range in the original file), ML (line range in this document) and size. <code> contains the files in map order, each inside a <file path="..."> element exactly as it appears on disk.
+ 4
+ 5  Before answering, study the project as a whole: its structure, entry points, configuration, dependencies and how the parts interact. When you refer to code, cite the file path and original line numbers. Use ML ranges to find a file or symbol in this document.
+ 6
+ 7  <code_map>
+ 8  my-app/
+ 9  ├── package.json [OL: 1-4 | ML: 18-21 | 43B]
+10  └── src/
+11      ├── greet.js [OL: 1-3 | ML: 25-27 | 60B]
+12      │   └── fn greet(name) [OL: 1-3 | ML: 25-27 | 60B]
+13      └── index.js [OL: 1-3 | ML: 31-33 | 66B]
+14  </code_map>
+15
+16  <code>
+17  <file path="package.json" bytes="43">
+18  {
+19    "name": "my-app",
+20    "type": "module"
+21  }
+22  </file>
+23
+24  <file path="src/greet.js" bytes="60">
+25  export function greet(name) {
+26    return `Hello, ${name}!`;
+27  }
+28  </file>
+29
+30  <file path="src/index.js" bytes="66">
+31  import { greet } from "./greet.js";
+32
+33  console.log(greet("world"));
+34  </file>
+35  </code>
+```
+
+Each map entry shows:
+
+- **OL** (original lines): the line range in the source file. `fn greet(name) [OL: 1-3]` is lines 1–3 of `greet.js`.
+- **ML** (merged lines): the line range in the output file, so `sed -n '25,27p' combicode.txt` prints exactly `greet`. ML appears only when the code is included.
+- **Size** of the file or symbol. Hide it with `--no-size`.
+
+Lines are counted by `\n`, the same way as `sed`, `wc -l` and editors. Windows line endings (`\r\n`) do not change the count. Empty files are shown as `[empty]`, and files left out with `--omit-content` as `[content omitted | size]`.
+
+The map is a *code map*: a directory **tree** with an **outline** of each file. That is why the options are named `--no-map`, `--only-map` and `--no-outline`.
+
+### Outlines
+
+The outline lists classes, structs, interfaces, functions, methods, test cases and long loops (6 lines or more) for:
+
+| Languages | Extensions |
+| --- | --- |
+| Python | `.py` `.pyi` |
+| JavaScript, TypeScript | `.js` `.jsx` `.mjs` `.cjs` `.ts` `.tsx` `.mts` `.cts` |
+| Rust, Go | `.rs` `.go` |
+| C, C++, C#, Java | `.c` `.h` `.cc` `.cpp` `.cxx` `.hh` `.hpp` `.hxx` `.cs` `.java` |
+| Kotlin, Swift, Scala | `.kt` `.kts` `.swift` `.scala` `.sc` |
+| PHP, Ruby, Lua, Perl, shell | `.php` `.rb` `.lua` `.pl` `.pm` `.sh` `.bash` `.zsh` |
+
+Other text files are included without an outline. Outlines are found with fast heuristics rather than a full parser: they skip comments and strings and handle multi-line signatures, but unusual syntax can be missed. File contents are never changed.
+
+### Prompts
+
+```sh
+combicode --prompt docs -i '*.md' -o docs.txt    # a prompt for documentation (llms.txt style)
+combicode --prompt-file my-prompt.md             # your own prompt
+```
+
+The built-in prompts describe only the sections that are present. `--prompt docs` tells the model to answer strictly from the packed documents.
+
+## Which files are included
+
+Combicode walks the directory and:
+
+- respects `.gitignore` (including nested ones, `.git/info/exclude` and your global gitignore) and `.ignore` files. Use `--no-gitignore` to turn this off;
+- respects a `.combicodeignore` file, in gitignore syntax, for project-specific rules that should not affect git;
+- skips [common non-source files](src/defaults.gitignore): `.git`, dependencies such as `node_modules` and `.venv`, build output such as `target` and `dist`, lockfiles, `.env` files, media and archives. `--no-gitignore` does not turn these off;
+- skips git submodules, symlinks, binary files and files that are not valid UTF-8 (with a warning);
+- never packs its own output file, or an earlier Combicode output lying in the project.
+
+Ignore rules are not secret detection. Check the file before you share it.
+
+## Restore files
+
+A Combicode file can be turned back into files:
+
+```sh
+combicode restore combicode.txt -o restored/       # recreate the files in restored/
+combicode restore combicode.txt -o restored/ -n    # dry run: show what would be written
+combicode restore combicode.txt --force            # replace files that already exist
+```
+
+The `bytes` attribute of each `<file>` element is the exact UTF-8 length of its content, so content that looks like a `</file>` tag, empty files, missing final newlines, `\r\n` line endings and Unicode all round-trip exactly. If you edit content inside the file, update `bytes` to match.
+
+Restore never writes outside the target directory: absolute paths, `..`, symlinks, Windows device names and other unsafe paths are rejected before anything is written. Existing files are kept unless you pass `--force`, and replaced files are swapped in atomically. Files left out with `--omit-content` are not restored.
 
 ## Options
 
-| Option | Alias | Purpose | Default |
-| --- | --- | --- | --- |
-| `--output` | `-o` | Output file, or restore directory | `combicode.txt`; current directory in restore mode |
-| `--dry-run` | `-d` | Preview without writing | Off |
-| `--include-ext` | `-i` | Comma-separated extensions | All |
-| `--exclude` | `-e` | Additional comma-separated gitignore patterns | None |
-| `--skip-content` | | Show matching files in the tree but omit content | None |
-| `--no-parse` | | Disable code outline parsing | Parsing enabled |
-| `--no-gitignore` | | Ignore project `.gitignore` files | Respect `.gitignore` |
-| `--no-header` | | Omit the prompt and code index | Header enabled |
-| `--llms-txt` | `-l` | Use a documentation prompt | Off |
-| `--recreate` | `-r` | Restore files from an archive | Off |
-| `--input` | | Archive to restore | `combicode.txt` |
-| `--overwrite` | | Replace existing files during restoration | Off |
-| `--version` | `-v` | Print version | |
-| `--help` | `-h` | Print help | |
-
-Output parent directories are created automatically. Unknown options fail with a nonzero exit status.
-
-## File selection
-
-Both packages use the shared rules in [configs/ignore.json](configs/ignore.json). These exclude dependency folders, build outputs, common binary formats, `.git`, `.env`, and other generated files. Defaults and explicit `--exclude` patterns take precedence over project `.gitignore` files; `--no-gitignore` does not disable these defaults.
-
-Nested `.gitignore` files can override patterns from parent files. An ignored directory is not traversed, so a child rule cannot re-include a file inside it. Submodule paths from `.gitmodules` are excluded. Symlinks and non-regular files are not collected. The output file excludes itself.
-
-Files with NUL bytes in the initial sample are treated as binary. Other selected files must decode as UTF-8; read or decoding failures stop generation without replacing an existing output. Ignore rules are file-selection defaults, not secret detection; inspect the preview before sharing project content.
-
-## Code outline and line references
-
-The output consists of an optional prompt and `<code_index>`, followed by `<merged_code>` records. Entries show:
-
-- **OL**: original source line numbers.
-- **ML**: line numbers within the combined output.
-- **Size**: UTF-8 byte size.
-
-Empty files and omitted content use `OL: 0-0`; their ML range points to the blank or placeholder line in the output.
-
-For example, `ML: 53-57` refers to lines 53 through 57 in the output:
-
-```sh
-sed -n '53,57p' combicode.txt
+```text
+combicode [OPTIONS] [PATH]
+combicode restore [OPTIONS] [INPUT]
 ```
 
-The Python package uses Python's built-in AST for valid Python sources. Other outlines, including Python outlines produced by the JavaScript package, use heuristics. They cover these language families:
-
-| Languages | Typical outline elements |
+| Option | Description |
 | --- | --- |
-| Python | Classes, functions, async functions, loops |
-| JavaScript, TypeScript | Classes, functions, methods, interfaces, test suites |
-| Go, Rust | Types, functions, implementation blocks |
-| Java, C/C++, C# | Types and methods |
-| PHP, Ruby | Classes, modules, functions |
-| Swift, Kotlin, Scala | Types and functions |
-| Lua, Perl, shell scripts | Functions and some control-flow blocks |
+| `PATH` | Project directory to pack. Default: the current directory. |
+| `-o, --output <FILE>` | Write to `FILE`; `-` means stdout. Default: stdout, or `combicode.txt` when stdout is a terminal. |
+| `-i, --include <PATTERNS>` | Pack only files matching these patterns. |
+| `-e, --exclude <PATTERNS>` | Skip files matching these patterns. |
+| `--omit-content <PATTERNS>` | List matching files in the map without their content. |
+| `--no-gitignore` | Do not read `.gitignore`, `.ignore` or git exclude files. |
+| `--no-prompt` | Leave out the prompt. |
+| `--no-map` | Leave out the code map. |
+| `--no-code` | Leave out file contents. |
+| `--only-map` | Output only the code map (`--no-prompt --no-code`). |
+| `--no-outline` | List files in the map without classes and functions. |
+| `--no-size` | Hide sizes in the map. |
+| `--prompt <code\|docs>` | Built-in prompt. Default: `code`. |
+| `--prompt-file <FILE>` | Use the contents of `FILE` as the prompt. |
+| `-q, --quiet` | Do not print the summary and warnings. |
+| `-h, --help` / `-V, --version` | Print help or the version. |
 
-Configuration, markup, and other text files are included without a code outline. Heuristic outlines are approximate: unusual syntax, multiline declarations, regular-expression literals, and language-specific constructs can be missed or assigned imperfect ranges. File content remains intact. Use `--no-parse` when only the file tree is needed.
+`restore` options:
 
-## Archive format and restoration
+| Option | Description |
+| --- | --- |
+| `INPUT` | Combicode file to read; `-` means stdin. Default: `combicode.txt`. |
+| `-o, --output <DIR>` | Directory to restore into. Default: the current directory. |
+| `-n, --dry-run` | Show what would be written without changing anything. |
+| `-f, --force` | Replace files that already exist. |
+| `-q, --quiet` | Do not print the file list and summary. |
 
-Each record includes a percent-encoded relative path, OL/ML information, exact UTF-8 byte length, and an explicit omission flag. Four-backtick fences keep the output readable; the byte length, rather than the fences, delimits the original content.
+Exit status is 0 on success, 1 on errors and 2 on invalid options.
 
-This preserves empty files, final newlines, CRLF, Unicode, and source text containing archive-like headers or Markdown fences. JavaScript and Python archives are interchangeable. Omitted records are never restored, and existing files are skipped unless `--overwrite` is supplied. Summaries count files actually written or eligible for writing in a dry run.
-
-Restoration validates records and paths before writing. Absolute paths, traversal components, duplicate names, control characters, backslashes, colon-containing paths, trailing dots/spaces, and Windows device names are rejected. Symlinks at or below the destination are rejected. Each file is staged and atomically installed; overwriting a hardlink does not change its other links. This is not a whole-project transaction: an I/O failure can leave earlier files restored. Use a destination that is not being modified concurrently by another process.
-
-**Old archive formats are unsupported. Regenerate existing context files before restoring them.** Archives preserve file content, not permissions, timestamps, symlinks, or binary files. Editing a record's content requires updating its byte length.
-
-## Development
-
-```sh
-bash scripts/sync-assets.sh
-npm ci --prefix combicode-js
-npm test --prefix combicode-js
-python3 -m venv .venv
-.venv/bin/python -m pip install -e './combicode-py[test]' build
-.venv/bin/python -m pytest -q combicode-py
-.venv/bin/python -m ruff check --config combicode-py/pyproject.toml combicode-py scripts
-.venv/bin/python -m build combicode-py
-```
-
-On Windows, use the corresponding executables under `.venv/Scripts`. The Python cross-runtime tests also require Node.js and installed JavaScript dependencies; they skip when Node.js is unavailable. CI installs both runtimes and tests minimum supported versions plus current runtimes on Linux, macOS, and Windows.
-
-Structure:
-
-- `combicode-js/index.js` and `combicode-py/combicode/main.py`: CLI, file selection, and index generation.
-- `lib/parsers.js` and `combicode/parsers.py`: language outlines.
-- `lib/archive.js` and `combicode/archive.py`: framing, validation, and restoration.
-- `tests/fixtures`: shared round-trip cases.
-- `configs/ignore.json`: canonical defaults, synchronized into both packages.
-
-Run `python3 scripts/prepare-release.py MAJOR.MINOR.PATCH` to update both package versions and the npm lockfile. Update changelogs and review changes before tagging and publishing a release. Release workflows synchronize shared assets, run package tests, build distributions, and publish.
+> **Windows PowerShell 5.1** saves redirected output as UTF-16. Use `-o combicode.txt` instead of `>` there (PowerShell 7 is fine).
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE)

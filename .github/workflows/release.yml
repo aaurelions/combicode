@@ -1,0 +1,211 @@
+name: Release
+
+# Push a tag such as v4.0.0 (matching the version in Cargo.toml) to build binaries for
+# every platform, create the GitHub release, and publish to crates.io, npm, PyPI and the
+# Homebrew tap.
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Check that the tag matches Cargo.toml
+        run: |
+          expected="v$(python scripts/release.py version)"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml version ($expected)"
+            exit 1
+          fi
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: verify
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: aarch64-pc-windows-msvc
+            os: windows-11-arm
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package
+        run: |
+          exe=target/${{ matrix.target }}/release/combicode
+          [ "$RUNNER_OS" = Windows ] && exe="$exe.exe"
+          "$exe" --version
+          python scripts/release.py archive --target ${{ matrix.target }} --binary "$exe" --out dist
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  github-release:
+    name: GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - run: python scripts/release.py checksums --dist dist
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+
+  crates-io:
+    name: Publish to crates.io
+    needs: github-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  npm:
+    name: Publish to npm
+    needs: github-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - run: python scripts/release.py npm --dist dist --out dist/npm
+      - name: Publish platform packages, then the main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          version="$(python scripts/release.py version)"
+          for package in dist/npm/combicode-*/ dist/npm/combicode/; do
+            name="$(node -p "require('./$package/package.json').name")"
+            if npm view "$name@$version" version > /dev/null 2>&1; then
+              echo "$name@$version is already published"
+            else
+              npm publish "./$package" --access public --provenance
+            fi
+          done
+
+  pypi:
+    name: Publish to PyPI
+    needs: github-release
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/combicode
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - run: python scripts/release.py wheels --dist dist --out dist/wheels
+      - uses: pypa/gh-action-pypi-publish@v1.14.2
+        with:
+          packages-dir: dist/wheels/
+          skip-existing: true
+
+  homebrew:
+    name: Update the Homebrew tap
+    needs: github-release
+    runs-on: ubuntu-latest
+    env:
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - name: Check for the tap token
+        if: env.TAP_TOKEN == ''
+        run: echo "::warning::HOMEBREW_TAP_TOKEN is not set; skipping the Homebrew tap update"
+      - if: env.TAP_TOKEN != ''
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: aaurelions/homebrew-tap
+          token: ${{ env.TAP_TOKEN }}
+          path: tap
+      - name: Commit the formula
+        if: env.TAP_TOKEN != ''
+        run: |
+          mkdir -p tap/Formula
+          python scripts/release.py formula --dist dist > tap/Formula/combicode.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/combicode.rb
+          git commit -m "combicode ${GITHUB_REF_NAME#v}"
+          git push
