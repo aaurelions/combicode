@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.1.0](https://github.com/aaurelions/combicode/compare/v4.0.1...v4.1.0) (2026-10-14)
+
+### Features
+
+- `--stdout` writes to stdout even when it is a terminal (same as `-o -`).
+- `--no-tags` prints the map without the `<code_map>` tags, so `combicode --only-map --no-tags --stdout -q` works as a `tree` with code outlines.
+- The summary after packing and restoring is a short aligned report instead of one long line, colored when stderr is a terminal (disable with `NO_COLOR`):
+
+  ```text
+  ✓ Packed 28 files into combicode.txt
+    Source   167.7KB
+    Output   5,337 lines · ~49,325 tokens
+  ```
+
 ## [4.0.1](https://github.com/aaurelions/combicode/compare/v4.0.0...v4.0.1) (2026-10-14)
 
 ### Fixes

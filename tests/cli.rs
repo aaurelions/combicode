@@ -153,6 +153,22 @@ fn section_flags() {
     let no_size = ok(dir.path(), &["--only-map", "--no-size"]);
     assert!(no_size.contains("app.py [OL: 1-12]\n"));
 
+    let bare = ok(dir.path(), &["--only-map", "--no-tags"]);
+    assert_eq!(
+        bare,
+        only_map
+            .strip_prefix("<code_map>\n")
+            .and_then(|m| m.strip_suffix("</code_map>\n"))
+            .unwrap()
+    );
+    assert_eq!(
+        ok(
+            dir.path(),
+            &["--no-prompt", "--no-code", "--no-tags", "--stdout"]
+        ),
+        bare
+    );
+
     let no_outline = ok(dir.path(), &["--only-map", "--no-outline"]);
     assert!(!no_outline.contains("class App"));
 
@@ -176,6 +192,10 @@ fn section_flags() {
         &["--only-map", "--no-map"],
         &["--only-map", "--prompt", "docs"],
         &["--no-prompt", "--prompt-file", "x"],
+        &["--no-tags"],
+        &["--no-code", "--no-tags"],
+        &["--no-prompt", "--no-tags"],
+        &["--stdout", "-o", "x.txt"],
         &["--not-an-option"],
     ] {
         assert!(
@@ -282,7 +302,10 @@ fn ignore_rules() {
         stderr.contains("warning: skipping latin1.txt: not valid UTF-8"),
         "{stderr}"
     );
-    assert!(stderr.contains("skipped 1 binary, 1 not UTF-8"), "{stderr}");
+    assert!(
+        stderr.contains("  Skipped  1 binary, 1 not UTF-8\n"),
+        "{stderr}"
+    );
 
     let map = ok(root, &["--only-map", "--no-gitignore"]);
     assert!(map.contains("drop.tmp") && !map.contains("key.txt") && !map.contains("dep.js"));
@@ -295,8 +318,15 @@ fn output_file_and_redirect_are_not_packed() {
     let output = combicode(root, &["-o", "out/context.txt"]);
     assert!(output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("combicode: packed 6 files"), "{stderr}");
-    assert!(stderr.contains("into out/context.txt"), "{stderr}");
+    assert!(
+        stderr.starts_with("✓ Packed 6 files into out/context.txt\n  Source   "),
+        "{stderr}"
+    );
+    assert!(stderr.contains("\n  Output   "), "{stderr}");
+    assert!(
+        !stderr.contains('\x1b'),
+        "no color when stderr is not a terminal"
+    );
     let first = fs::read_to_string(root.join("out/context.txt")).unwrap();
     ok(root, &["-o", "out/context.txt"]);
     assert_eq!(
@@ -345,7 +375,7 @@ fn restore_round_trip() {
     let output = combicode(root, &["restore", packed_arg, "-o", restored_arg, "-n"]);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        output.status.success() && stderr.contains("would restore 7 files"),
+        output.status.success() && stderr.contains("Dry run: would restore 7 files into "),
         "{stderr}"
     );
     assert!(!restored.exists());

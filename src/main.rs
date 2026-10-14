@@ -9,6 +9,7 @@ mod fsx;
 mod outline;
 mod pack;
 mod prompt;
+mod report;
 mod restore;
 mod units;
 

@@ -13,6 +13,8 @@ pub struct Options {
     pub outline: bool,
     pub code: bool,
     pub sizes: bool,
+    /// Wrap the map in `<code_map>` tags.
+    pub tags: bool,
 }
 
 /// Inclusive 1-based line range of a file's content within the document.
@@ -42,6 +44,7 @@ pub fn render(project: &str, files: &[SourceFile], options: &Options) -> String 
         files,
         outlines: &outlines,
         sizes: options.sizes,
+        tags: options.tags,
     };
 
     if options.code {
@@ -96,6 +99,7 @@ struct Map<'a> {
     files: &'a [SourceFile],
     outlines: &'a [Vec<Symbol>],
     sizes: bool,
+    tags: bool,
 }
 
 #[derive(Default)]
@@ -131,10 +135,17 @@ impl Map<'_> {
                 }
             }
         }
-        let mut out = format!("{MAP_OPEN}\n{}/\n", display_name(self.project));
+        let mut out = String::new();
+        if self.tags {
+            out.push_str(MAP_OPEN);
+            out.push('\n');
+        }
+        out.push_str(&format!("{}/\n", display_name(self.project)));
         self.render_dir(&mut out, &root, "", ranges);
-        out.push_str(MAP_CLOSE);
-        out.push('\n');
+        if self.tags {
+            out.push_str(MAP_CLOSE);
+            out.push('\n');
+        }
         out
     }
 
@@ -265,6 +276,7 @@ mod tests {
             outline: true,
             code: true,
             sizes: true,
+            tags: true,
         }
     }
 
@@ -325,6 +337,14 @@ pub fn a() {
         assert_eq!(
             render("p", &files, &only_map),
             "<code_map>\np/\n└── a.py [OL: 1-2]\n    └── fn f() [OL: 1-2]\n</code_map>\n"
+        );
+        let untagged = Options {
+            tags: false,
+            ..only_map
+        };
+        assert_eq!(
+            render("p", &files, &untagged),
+            "p/\n└── a.py [OL: 1-2]\n    └── fn f() [OL: 1-2]\n"
         );
         let only_code = Options {
             prompt: None,

@@ -1,6 +1,6 @@
 [package]
 name = "combicode"
-version = "4.0.1"
+version = "4.1.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Pack a codebase into one LLM-friendly text file with a code map and exact line references"

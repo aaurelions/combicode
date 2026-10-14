@@ -11,6 +11,7 @@ use crate::document::{self, Options};
 use crate::files::{self, Selection};
 use crate::fsx;
 use crate::prompt::{self, Layout};
+use crate::report::Report;
 use crate::units::{format_count, format_size};
 
 const DEFAULT_OUTPUT: &str = "combicode.txt";
@@ -48,13 +49,22 @@ pub fn run(args: &PackArgs) -> Result<()> {
     if !prompt_enabled && !map && !code {
         bail!("nothing to output: --no-prompt, --no-map and --no-code disable every section");
     }
+    // Without the tags the map is no longer a delimited section, so it cannot share the
+    // document with the prompt (which refers to <code_map>) or the code.
+    if args.no_tags && (prompt_enabled || code || !map) {
+        bail!("--no-tags needs the map to be the only section; add --only-map");
+    }
 
     let root = &args.path;
     if !root.is_dir() {
         bail!("{} is not a directory", root.display());
     }
     let project = project_name(root);
-    let destination = Destination::choose(args.output.as_deref());
+    let destination = if args.stdout {
+        Destination::Stdout
+    } else {
+        Destination::choose(args.output.as_deref())
+    };
 
     let collection = files::collect(&Selection {
         root,
@@ -105,6 +115,7 @@ pub fn run(args: &PackArgs) -> Result<()> {
             outline: !args.no_outline,
             code,
             sizes: !args.no_size,
+            tags: !args.no_tags,
         },
     );
 
@@ -137,16 +148,29 @@ pub fn run(args: &PackArgs) -> Result<()> {
             .iter()
             .filter(|f| f.content.is_none())
             .count();
-        let mut summary = format!(
-            "combicode: packed {} {} ({}) into {target}: {} lines, ~{} tokens",
+        let mut report = Report::done(format!(
+            "Packed {} {} into {target}",
             format_count(packed),
             plural(packed, "file", "files"),
-            format_size(content_bytes),
-            format_count(text.matches('\n').count()),
-            format_count(text.len().div_ceil(BYTES_PER_TOKEN)),
+        ));
+        report.row("Source", format_size(content_bytes));
+        report.row(
+            "Output",
+            format!(
+                "{} lines · ~{} tokens",
+                format_count(text.matches('\n').count()),
+                format_count(text.len().div_ceil(BYTES_PER_TOKEN)),
+            ),
         );
         if omitted > 0 {
-            summary.push_str(&format!("; content omitted for {}", format_count(omitted)));
+            report.row(
+                "Omitted",
+                format!(
+                    "{} {} (listed in the map without content)",
+                    format_count(omitted),
+                    plural(omitted, "file", "files"),
+                ),
+            );
         }
         let skipped = &collection.skipped;
         if skipped.total() > 0 {
@@ -158,12 +182,12 @@ pub fn run(args: &PackArgs) -> Result<()> {
             ]
             .iter()
             .filter(|(count, _)| *count > 0)
-            .map(|(count, reason)| format!("{count} {reason}"))
+            .map(|(count, reason)| format!("{} {reason}", format_count(*count)))
             .collect::<Vec<_>>()
             .join(", ");
-            summary.push_str(&format!("; skipped {reasons}"));
+            report.row("Skipped", reasons);
         }
-        eprintln!("{summary}");
+        report.print();
     }
     Ok(())
 }

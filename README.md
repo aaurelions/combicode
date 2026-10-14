@@ -45,6 +45,16 @@ combicode | pbcopy            # copy to the clipboard on macOS
 
 Status messages go to stderr, so they never end up in the file.
 
+To print to the terminal instead of saving a file, use `--stdout` (or `-o -`). With `--only-map --no-tags` this makes Combicode a `tree` with code outlines and line counts:
+
+```sh
+combicode --only-map --no-tags --stdout -q     # the bare map, nothing else
+alias ctree='combicode --only-map --no-tags --stdout -q'
+ctree src/                                     # like `tree src/`, with classes and functions
+```
+
+`--no-tags` drops the `<code_map>` wrapper, which only helps an LLM find the section in a larger document. It works only when the map is the sole section. `-q` hides the summary line, which goes to stderr and would otherwise show up in the terminal.
+
 ### Choose what goes into the file
 
 ```sh
@@ -181,6 +191,7 @@ combicode restore [OPTIONS] [INPUT]
 | --- | --- |
 | `PATH` | Project directory to pack. Default: the current directory. |
 | `-o, --output <FILE>` | Write to `FILE`; `-` means stdout. Default: stdout, or `combicode.txt` when stdout is a terminal. |
+| `--stdout` | Write to stdout even when it is a terminal (same as `-o -`). |
 | `-i, --include <PATTERNS>` | Pack only files matching these patterns. |
 | `-e, --exclude <PATTERNS>` | Skip files matching these patterns. |
 | `--omit-content <PATTERNS>` | List matching files in the map without their content. |
@@ -191,6 +202,7 @@ combicode restore [OPTIONS] [INPUT]
 | `--only-map` | Output only the code map (`--no-prompt --no-code`). |
 | `--no-outline` | List files in the map without classes and functions. |
 | `--no-size` | Hide sizes in the map. |
+| `--no-tags` | Print the map without the `<code_map>` tags. Only when the map is the sole section. |
 | `--prompt <code\|docs>` | Built-in prompt. Default: `code`. |
 | `--prompt-file <FILE>` | Use the contents of `FILE` as the prompt. |
 | `-q, --quiet` | Do not print the summary and warnings. |

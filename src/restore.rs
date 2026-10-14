@@ -10,6 +10,7 @@ use crate::archive::{self, Record};
 use crate::cli::RestoreArgs;
 use crate::fsx;
 use crate::pack::plural;
+use crate::report::Report;
 use crate::units::{format_count, format_size};
 
 #[derive(Clone, Copy)]
@@ -80,28 +81,35 @@ pub fn run(args: &RestoreArgs) -> Result<()> {
     if !args.quiet {
         let omitted = records.iter().filter(|r| r.content.is_none()).count();
         let kept = plan.len() - written;
-        let verb = if args.dry_run {
-            "would restore"
-        } else {
-            "restored"
-        };
-        let mut summary = format!(
-            "combicode: {verb} {} {} ({}) into {}",
+        let headline = format!(
+            "{} {} into {}",
             format_count(written),
             plural(written, "file", "files"),
-            format_size(bytes),
             root.display()
         );
+        let mut report = if args.dry_run {
+            Report::preview(format!("Dry run: would restore {headline}"))
+        } else {
+            Report::done(format!("Restored {headline}"))
+        };
+        report.row("Size", format_size(bytes));
         if kept > 0 {
-            summary.push_str(&format!("; kept {} existing", format_count(kept)));
+            report.row(
+                "Kept",
+                format!("{} existing (use --force to replace)", format_count(kept)),
+            );
         }
         if omitted > 0 {
-            summary.push_str(&format!(
-                "; {} omitted in the document",
-                format_count(omitted)
-            ));
+            report.row(
+                "Omitted",
+                format!(
+                    "{} {} (no content in the document)",
+                    format_count(omitted),
+                    plural(omitted, "file", "files"),
+                ),
+            );
         }
-        eprintln!("{summary}");
+        report.print();
     }
     Ok(())
 }

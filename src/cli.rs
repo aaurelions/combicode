@@ -11,7 +11,8 @@ Examples:
   combicode                               Save combicode.txt (or write to stdout when redirected)
   combicode > context.txt                 Write the document to a file through stdout
   combicode -o context.txt                Write the document to a file
-  combicode --only-map                    Print only the directory tree and code outline
+  combicode --only-map                    Save only the directory tree and code outline
+  combicode --only-map --no-tags --stdout Print the bare map to the terminal, like `tree`
   combicode -i 'src/,*.md' -e '*.test.ts' Choose which files to pack
   combicode --omit-content 'fixtures/'    List files in the map without their content
   combicode restore context.txt -o out/   Recreate the packed files";
@@ -48,6 +49,10 @@ pub struct PackArgs {
     /// Write to FILE ("-" for stdout). Default: stdout, or combicode.txt when stdout is a terminal
     #[arg(short, long, value_name = "FILE")]
     pub output: Option<PathBuf>,
+
+    /// Write to stdout even when it is a terminal (same as -o -)
+    #[arg(long, conflicts_with = "output")]
+    pub stdout: bool,
 
     /// Pack only files matching these patterns (gitignore syntax, comma-separated)
     #[arg(
@@ -105,6 +110,10 @@ pub struct PackArgs {
     /// Hide file and symbol sizes in the map
     #[arg(long, help_heading = "Map")]
     pub no_size: bool,
+
+    /// Print the map without the <code_map> tags (only when the map is the sole section)
+    #[arg(long, help_heading = "Map")]
+    pub no_tags: bool,
 
     /// Built-in prompt to use
     #[arg(
